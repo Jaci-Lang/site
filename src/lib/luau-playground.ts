@@ -5,7 +5,7 @@ import LZString from 'lz-string';
 
 // Playground runtime is sourced from Jaci's own releases: https://github.com/Jaci-Lang/jaci/releases
 // Update this URL when a dedicated Jaci playground is deployed.
-export const PLAYGROUND_URL = 'https://jaci-lang.github.io/playground';
+export const PLAYGROUND_URL = 'https://play.luau.org';
 
 
 export interface ShareState {
