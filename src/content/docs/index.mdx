@@ -1,0 +1,58 @@
+---
+title: Jaci
+description: Jaci is a blazing-fast, embeddable Luau superset optimized for standalone applications, systems programming, and high-performance native execution.
+template: splash
+hero:
+  tagline: >
+    Jaci is an independent, blazing-fast Luau fork optimized for general-purpose programming, standalone applications, and native embedding.
+  image:
+    file: ../../../logo.svg
+    alt: Official logo of the Jaci programming language
+  actions:
+    - text: Get Started 
+      link: /site/getting-started/
+    - text: GitHub
+      link: https://github.com/jaci-lang/jaci
+      variant: secondary
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+import ColoredCard from '../../components/ColoredCard.astro';
+import LuauPlayground from '../../components/LuauPlayground.astro';
+
+# Try Jaci!
+
+<LuauPlayground code={`
+-- we can define our own structural data types
+type Point = { x: number, y: number }
+-- and we can annotate variables (and function arguments) with them)
+local p: Point = { x = 1, y = 2 }
+
+print(p.x, p.y)
+
+-- and we can see that accessing an invalid field from a table raises a type error!
+print(p.z)
+`} height="min(80vh, 400px)" />
+
+# Why Jaci?
+
+<CardGrid>
+	<ColoredCard title="Blazing Fast Performance" icon="rocket" color="red">
+	Aggressive native CodeGen (x64 / AArch64), low runtime overhead, and an optimized VM bytecode loop delivering maximum execution speed.
+	</ColoredCard>
+	<ColoredCard title="Enhanced FFI & Native Interop" icon="puzzle" color="yellow">
+	Direct, near-zero-cost foreign function calls and seamless C/C++ integration for building real-world standalone systems and applications.
+	</ColoredCard>
+	<ColoredCard title="Standalone Systems Access" icon="laptop" color="purple">
+	Relaxed sandbox constraints providing direct access to filesystem, processes, and standard OS primitives outside Roblox Studio.
+	</ColoredCard>
+	<ColoredCard title="Gradual Typing & Safety" icon="approve-check-circle" color="blue">
+	Full support for Luau's state-of-the-art gradual type system, type refinements, and powerful compile-time type inference engine.
+	</ColoredCard>
+	<ColoredCard title="Embeddability & Extensibility" icon="puzzle" color="green">
+	Built with native embedding in mind with clean C/C++ APIs, configurable memory allocators, and modular native code generation.
+	</ColoredCard>
+	<ColoredCard title="Luau Compatibility" icon="setting" color="pink">
+	Full Luau backward compatibility: every valid Luau program runs seamlessly on Jaci as an expressive superset.
+	</ColoredCard>
+</CardGrid>
