@@ -163,13 +163,28 @@ On x86-64 (System V AMD64), Jaci dispatches FFI calls via a direct register-mapp
 
 There is no intermediate Lua-to-C bridge layer. The call cost is equivalent to a direct `call` instruction in generated machine code. A portable typed fallback handles other architectures.
 
-## Safety
+## Safety & Capability Policies
 
-FFI operations are **unsafe** by design — they bypass the type system and GC write barriers. Follow these rules:
+To prevent untrusted code execution and memory corruption, Jaci provides capability-gated security policies and memory validation (see [ADR 0013](https://github.com/jaci-lang/jaci/blob/master/docs/adr/0013-secure-ffi-and-memory-safety.md)):
 
-- Do not store raw pointers obtained from `ffi.ptr` past the lifetime of the source buffer or string.
-- Do not mix Jaci GC-managed memory with manually allocated memory without a stable root.
-- Use `ffi.errno` checks after every syscall that can fail.
+```lua
+-- Configure FFI execution mode: "strict", "permissive", or "disabled"
+ffi.mode("strict")
+
+-- Manage library allowlists and denylists
+ffi.allowLibrary("libm.so.6")
+ffi.denyLibrary("libcrypto.so")
+
+-- Validate pointer address and size
+if ffi.isSafe(ptr, 64) then
+    -- perform memory operation
+end
+
+-- Validate runtime types and struct layouts
+assert(ffi.istype("Point", buf))
+local pointLayout = ffi.struct("Point", { x = "int", y = "int" })
+print("Size:", pointLayout.size, "Alignment:", pointLayout.align)
+```
 
 ## Full example — wrapping `zlib`
 

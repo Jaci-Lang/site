@@ -914,11 +914,37 @@ Each character of `s` results in additional values being returned in the same or
 For example, `debug.info(2, "sln")` returns source file, current line and function name for the caller of the current function.
 
 ```
+function debug.getinfo(co: thread?, levelOrFunc: number | function): table?
+```
+
+Returns a descriptive table of information about the given function or stack frame level (including `source`, `short_src`, `currentline`, `linedefined`, `what`, `name`, `namewhat`, `nups`, and `isvararg`).
+
+```
+function debug.getlocal(co: thread?, level: number, index: number): (string?, any)
+function debug.getlocals(co: thread?, level: number?): { [string]: any }
+```
+
+Inspects active local variables by numerical index or returns a dictionary of all active locals at the specified stack frame level.
+
+```
+function debug.getupvalue(f: function, index: number): (string?, any)
+function debug.getupvalues(f: function): { [string]: any }
+```
+
+Inspects upvalues captured by a closure by index or returns a dictionary of all upvalues.
+
+```
+function debug.dumpstack(co: thread?, level: number?): string
+```
+
+Dumps a human-readable stack trace with all local variable names, types, and values across active frames.
+
+```
 function debug.traceback(co: thread, msg: string?, level: number?): string
 function debug.traceback(msg: string?, level: number?): string
 ```
 
-Produces a stringified callstack of the given thread, or the current thread, starting with level `level`. If `msg` is specified, then the resulting callstack includes the string before the callstack output, separated with a newline. The format of the callstack is human-readable and subject to change.
+Produces a stringified callstack of the given thread, or the current thread, starting with level `level`. If `msg` is specified, then the resulting callstack includes the string before the callstack output, separated with a newline.
 
 ## buffer library
 
@@ -1313,7 +1339,7 @@ Standard file handle methods available on open `file` objects:
 
 ## ffi library
 
-The Foreign Function Interface (`ffi`) allows calling native C functions, dynamic libraries, and working with raw memory structures directly from Jaci code.
+The Foreign Function Interface (`ffi`) allows calling native C functions, dynamic libraries, and working with raw memory structures directly from Jaci code with capability-gated security policies.
 
 ```
 ffi.C: table
@@ -1351,12 +1377,23 @@ function ffi.sym(lib: FFI_Library?, name: string, retType: string, ...: string):
 Explicitly binds and resolves a symbol with a specified return type and parameter types.
 
 ```
+function ffi.mode(mode: "strict" | "permissive" | "disabled"): string
+function ffi.allowLibrary(name: string): ()
+function ffi.denyLibrary(name: string): ()
+function ffi.isSafe(ptr: userdata, length: number?): boolean
+function ffi.istype(typeName: string, obj: any): boolean
+function ffi.struct(name: string, fields: { [string]: string }): table
+```
+
+Security and structural reflection APIs:
+- `ffi.mode`: Configures or queries the active FFI security mode (`"strict"` enables capability gating; `"permissive"` allows unverified loads; `"disabled"` completely disallows FFI execution).
+- `ffi.allowLibrary` / `ffi.denyLibrary`: Manages allowlists and denylists for shared libraries.
+- `ffi.isSafe`: Checks if a pointer address is non-null and valid for memory operations.
+- `ffi.istype`: Validates if a userdata or buffer represents a specified C type.
+- `ffi.struct`: Reflects and calculates struct layout sizes, field offsets, and alignments.
+
+```
 function ffi.new(typeName: string, count: number?): buffer
-```
-
-Allocates a typed buffer sized according to the C type or struct layout.
-
-```
 function ffi.ptr(buf: buffer | string): userdata
 function ffi.string(ptr: userdata, length: number?): string
 function ffi.copy(dest: buffer | userdata, src: buffer | string | userdata, length: number): ()
@@ -1411,9 +1448,9 @@ function json.object(t: table?): table
 
 Helpers to explicitly tag tables as JSON arrays `[]` or JSON objects `{}` via `__jsontype`.
 
-## hash library
+## hash & crypto library
 
-The `hash` library provides built-in cryptographic and fast hashing algorithms implemented in C++.
+The `hash` and `crypto` libraries provide cryptographic and non-cryptographic hash functions, symmetric ciphers, HMAC, and CSPRNG.
 
 ```
 function hash.crc32(data: string | buffer): number
@@ -1427,11 +1464,37 @@ function hash.md5(data: string | buffer): string
 function hash.md5hex(data: string | buffer): string
 function hash.sha1(data: string | buffer): string
 function hash.sha1hex(data: string | buffer): string
+function hash.sha224(data: string | buffer): string
+function hash.sha224hex(data: string | buffer): string
 function hash.sha256(data: string | buffer): string
 function hash.sha256hex(data: string | buffer): string
+function hash.sha384(data: string | buffer): string
+function hash.sha384hex(data: string | buffer): string
+function hash.sha512(data: string | buffer): string
+function hash.sha512hex(data: string | buffer): string
 ```
 
 Cryptographic hash functions returning raw binary digests or lowercase hexadecimal strings.
+
+```
+function hash.hmac(algorithm: "sha256" | "sha512" | "sha1" | "md5", key: string | buffer, data: string | buffer): string
+function hash.hmachex(algorithm: string, key: string | buffer, data: string | buffer): string
+function hash.hmac_sha256(key: string | buffer, data: string | buffer): string
+function hash.hmac_sha512(key: string | buffer, data: string | buffer): string
+```
+
+HMAC message authentication codes.
+
+```
+function crypto.randomBytes(count: number): buffer
+function crypto.timingSafeEqual(a: string | buffer, b: string | buffer): boolean
+function crypto.chacha20(key: string | buffer, nonce: string | buffer, plaintext: string | buffer, counter: number?): buffer
+```
+
+Cryptographic utilities:
+- `crypto.randomBytes`: Generates cryptographically secure pseudo-random bytes (`/dev/urandom` or `BCryptGenRandom`).
+- `crypto.timingSafeEqual`: Constant-time comparison protecting against side-channel timing attacks.
+- `crypto.chacha20`: High-speed RFC 7539 stream cipher encryption/decryption.
 
 ## process library
 
@@ -1459,45 +1522,80 @@ function process.exit(code: number?): ()
 
 ## net library
 
-The `net` library provides HTTP/1.1 client capabilities and raw TCP socket networking.
+The `net` library provides HTTP/1.1 client capabilities, full RFC 6455 WebSocket client communication, raw TCP socket networking, and URL utilities.
 
+### HTTP Client:
 ```
-function net.request(options: { url: string, method: string?, headers: { [string]: string }?, body: (string | buffer)? }): { ok: boolean, status: number, headers: { [string]: string }, body: string }
-```
-
-Performs a synchronous HTTP/1.1 request.
-
-```
-function net.connect(host: string, port: number, timeoutMs: number?): Socket
-```
-
-Establishes a blocking TCP connection to `host:port`.
-
-```
-function net.listen(host: string, port: number, backlog: number?): Listener
+function net.request(options: { url: string, method: string?, headers: { [string]: string }?, body: (string | buffer)? }): { ok: boolean, status: number, statusCode: number, headers: { [string]: string }, body: string }
+function net.get(url: string, options: { headers: { [string]: string }? }?): { ok: boolean, status: number, body: string, headers: table }
+function net.post(url: string, body: (string | buffer)?, options: table?): { ok: boolean, status: number, body: string, headers: table }
+function net.put(url: string, body: (string | buffer)?, options: table?): { ok: boolean, status: number, body: string, headers: table }
+function net.delete(url: string, options: table?): { ok: boolean, status: number, body: string, headers: table }
+function net.patch(url: string, body: (string | buffer)?, options: table?): { ok: boolean, status: number, body: string, headers: table }
+function net.head(url: string, options: table?): { ok: boolean, status: number, headers: table }
 ```
 
-Creates a TCP server listener bound to `host:port`.
+### WebSockets (RFC 6455):
+```
+function net.websocket(url: string): WebSocket
+function net.websocketConnect(url: string): WebSocket
+```
 
-### Socket methods:
+WebSocket methods on `WebSocket` objects:
+- `ws:send(data: string | buffer, isBinary: boolean?): boolean`
+- `ws:receive(): (string?, boolean | string)` — returns payload and `isBinary` boolean (or `nil, "closed"`).
+- `ws:ping(data: string?): boolean`
+- `ws:pong(data: string?): boolean`
+- `ws:close(code: number?): ()`
+- `ws:isOpen(): boolean`
+- `ws:url(): string`
+
+### TCP Sockets:
+```
+function net.connect(host: string, port: number): Socket
+function net.listen(host: string?, port: number): Listener
+```
+
+Socket methods on `Socket` objects:
 - `socket:send(data: string | buffer): number?`
-- `socket:recv(maxBytes: number?): string?`
+- `socket:recv(maxBytes: number): string?`
+- `socket:recvAll(maxBytes: number?): string?`
+- `socket:readline(maxLen: number?): string?`
+- `socket:settimeout(seconds: number): ()`
+- `socket:setNonBlocking(nonBlocking: boolean?): ()`
+- `socket:getsockname(): { host: string, port: number }?`
+- `socket:getpeername(): { host: string, port: number }?`
 - `socket:close(): ()`
-- `socket:settimeout(timeoutMs: number): ()`
 
-### Listener methods:
+Listener methods on `Listener` objects:
 - `listener:accept(): Socket?`
+- `listener:port(): number`
+- `listener:getsockname(): { host: string, port: number }?`
 - `listener:close(): ()`
+
+### URL Utilities:
+```
+function net.urlParse(url: string): { scheme: string, host: string, port: number, path: string, query: string?, fragment: string? }?
+function net.urlFormat(components: { scheme: string?, host: string?, port: number?, path: string?, query: string?, fragment: string? }): string
+function net.urlEncode(str: string): string
+function net.urlDecode(str: string): string
+```
 
 ## task library
 
-The `task` library provides an asynchronous reactor event loop, promises, timers, and CSP channels.
+The `task` library provides an asynchronous reactor event loop, promises, timers, thread scheduling, CSP channels, and parallel execution boundaries.
 
 ```
 function task.spawn(funcOrThread: ((...any) -> ...any) | thread, ...: any): thread
 function task.defer(funcOrThread: ((...any) -> ...any) | thread, ...: any): ()
 function task.delay(sec: number, func: (...any) -> ...any, ...: any): Timer
+function task.every(sec: number, func: (...any) -> ...any, ...: any): Timer
 function task.wait(sec: number?): number
+function task.yield(): ()
+function task.cancel(threadOrTimer: thread | Timer): ()
+function task.status(threadOrPromise: thread | Promise): string
+function task.desynchronize(): ()
+function task.synchronize(): ()
 ```
 
 ### Promises:
@@ -1507,6 +1605,10 @@ function task.resolve(...: any): Promise
 function task.reject(reason: any): Promise
 function task.all(promises: { Promise }): Promise
 function task.race(promises: { Promise }): Promise
+function task.any(promises: { Promise }): Promise
+function task.allSettled(promises: { Promise }): Promise
+function task.async(fn: (...any) -> ...any): (...any) -> Promise
+function task.await(promise: Promise): ...any
 ```
 
 Promise methods:
@@ -1515,6 +1617,8 @@ Promise methods:
 - `promise:finally(onFinally): Promise`
 - `promise:await(): ...any` (yields the calling coroutine until settled)
 - `promise:status(): "pending" | "fulfilled" | "rejected"`
+- `promise:value(): any`
+- `promise:reason(): any`
 
 ### Channels (CSP):
 ```
@@ -1522,12 +1626,16 @@ function task.channel(capacity: number?): Channel
 ```
 
 Channel methods:
-- `channel:send(val): boolean` (yields if full/unbuffered)
+- `channel:send(val: any): boolean` (yields if full/unbuffered)
 - `channel:recv(): (any, boolean)` (yields if empty)
-- `channel:try_send(val): boolean`
-- `channel:try_recv(): (any, boolean)`
+- `channel:receive(): (any, boolean)`
+- `channel:try_send(val: any): boolean`
+- `channel:trySend(val: any): boolean`
+- `channel:try_receive(): (any, boolean)`
+- `channel:tryReceive(): (any, boolean)`
 - `channel:close(): ()`
 - `channel:len(): number`
-- `channel:cap(): number`
-- `channel:closed(): boolean`
+- `channel:capacity(): number`
+- `channel:is_closed(): boolean`
+- `channel:await(): (any, boolean)`
 
