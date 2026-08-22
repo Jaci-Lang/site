@@ -1639,3 +1639,53 @@ Channel methods:
 - `channel:is_closed(): boolean`
 - `channel:await(): (any, boolean)`
 
+## jni library
+
+The `jni` library provides direct, in-process interoperability with Java virtual machines (JVM) across Linux, macOS, and Windows. It supports reflection-based method overload scoring, direct JNI invocation, bidirectional collections conversion, zero-copy buffer sharing, local reference frame scoping, and exception catching with full Java stack traces.
+
+### JVM Lifecycle:
+```
+function jni.init(config: { classpath: (string | { string })?, options: { string }?, jvm_path: string?, ignore_unrecognized: boolean? }?): boolean
+function jni.is_initialized(): boolean
+function jni.get_version(): string
+function jni.destroy(): boolean
+function jni.find_jvm_path(): string
+function jni.attach_current_thread(): boolean
+function jni.detach_current_thread(): boolean
+function jni.with_local_frame(capacity: number?, callback: () -> ...any): ...any
+```
+
+### Class Resolution & Object Instantiation:
+```
+function jni.find_class(className: string): JClass
+function jni.import(className: string): JClass
+function jni.new(classNameOrClass: string | JClass, ...: any): JObject
+```
+
+### Type Conversion & Interop:
+```
+function jni.array(elementTypeName: string, sizeOrTable: number | { any }): JArray
+function jni.wrap_buffer(buf: buffer): JObject
+function jni.to_java(value: any): JObject | any
+function jni.to_luau(object: JObject | any): any
+function jni.instanceof(object: any, classNameOrClass: string | JClass): boolean
+function jni.cast(object: JObject, targetClassOrName: string | JClass): JObject
+function jni.call_static(classNameOrClass: string | JClass, methodName: string, sig: string?, ...: any): any
+function jni.call_method(object: JObject, methodName: string, sig: string?, ...: any): any
+```
+
+### Explicit Typed Primitive Constructors:
+```
+function jni.jboolean(value: boolean): JTypedValue
+function jni.jbyte(value: number): JTypedValue
+function jni.jchar(value: string | number): JTypedValue
+function jni.jshort(value: number): JTypedValue
+function jni.jint(value: number): JTypedValue
+function jni.jlong(value: number): JTypedValue
+function jni.jfloat(value: number): JTypedValue
+function jni.jdouble(value: number): JTypedValue
+function jni.jstring(value: string): JObject
+jni.null: any
+```
+
+
