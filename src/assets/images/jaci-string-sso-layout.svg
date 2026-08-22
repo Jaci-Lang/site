@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" width="100%" height="100%" style="background:#0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <defs>
+    <linearGradient id="strGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+    <linearGradient id="ssoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#047857" />
+    </linearGradient>
+  </defs>
+
+  <text x="450" y="32" text-anchor="middle" fill="#f8fafc" font-size="18" font-weight="700">String Representation: Generic Interning vs Jaci Small String Optimization (SSO)</text>
+
+  <!-- Left: Generic Luau TString -->
+  <g transform="translate(40, 65)">
+    <rect width="380" height="260" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+    <rect width="380" height="38" rx="8" fill="url(#strGrad)"/>
+    <rect y="30" width="380" height="8" fill="#1d4ed8"/>
+    <text x="190" y="25" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">Standard Luau TString Heap Object</text>
+
+    <g transform="translate(20, 56)" font-size="11.5" fill="#cbd5e1">
+      <rect width="340" height="26" rx="4" fill="#334155" opacity="0.6"/>
+      <text x="12" y="17" fill="#93c5fd" font-weight="600">CommonHeader</text>
+      <text x="150" y="17" fill="#94a3b8">gc | tt | marked | memcat</text>
+
+      <rect y="32" width="340" height="26" rx="4" fill="#334155" opacity="0.4"/>
+      <text x="12" y="49" fill="#93c5fd" font-weight="600">hash &amp; len</text>
+      <text x="150" y="49" fill="#94a3b8">unsigned int hash (4B), len (4B)</text>
+
+      <rect y="64" width="340" height="26" rx="4" fill="#334155" opacity="0.6"/>
+      <text x="12" y="81" fill="#93c5fd" font-weight="600">char data[...]</text>
+      <text x="150" y="81" fill="#94a3b8">Flexible heap array + NUL</text>
+
+      <rect y="98" width="340" height="42" rx="4" fill="#ef4444" opacity="0.15" stroke="#ef4444" stroke-width="1"/>
+      <text x="12" y="117" fill="#fca5a5" font-weight="600">Allocation Penalty:</text>
+      <text x="135" y="117" fill="#f87171">Heap allocation + GC tracking</text>
+      <text x="12" y="132" fill="#cbd5e1" font-size="10.5">Every substring requires GC header &amp; hash recalculation</text>
+    </g>
+  </g>
+
+  <!-- Right: Jaci SSO & 2-Cycle Interning -->
+  <g transform="translate(480, 65)">
+    <rect width="380" height="260" rx="8" fill="#1e293b" stroke="#059669" stroke-width="1.5"/>
+    <rect width="380" height="38" rx="8" fill="url(#ssoGrad)"/>
+    <rect y="30" width="380" height="8" fill="#047857"/>
+    <text x="190" y="25" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">Jaci SSO Buffer &amp; 2-Cycle Mask Interning</text>
+
+    <g transform="translate(20, 56)" font-size="11.5" fill="#cbd5e1">
+      <rect width="340" height="26" rx="4" fill="#064e3b" opacity="0.6"/>
+      <text x="12" y="17" fill="#6ee7b7" font-weight="600">SSO Inlined Buffer</text>
+      <text x="150" y="17" fill="#a7f3d0">15-byte inline buffer inside TValue</text>
+
+      <rect y="32" width="340" height="26" rx="4" fill="#064e3b" opacity="0.4"/>
+      <text x="12" y="49" fill="#6ee7b7" font-weight="600">2-Cycle Register Mask</text>
+      <text x="150" y="49" fill="#a7f3d0">hashpow2 lowered to bitwise AND</text>
+
+      <rect y="64" width="340" height="26" rx="4" fill="#064e3b" opacity="0.6"/>
+      <text x="12" y="81" fill="#6ee7b7" font-weight="600">Builtin Folding</text>
+      <text x="150" y="81" fill="#a7f3d0">string.byte / sub directly to SSE</text>
+
+      <rect y="98" width="340" height="42" rx="4" fill="#10b981" opacity="0.15" stroke="#10b981" stroke-width="1"/>
+      <text x="12" y="117" fill="#a7f3d0" font-weight="600">Zero Allocation:</text>
+      <text x="125" y="117" fill="#34d399">Zero heap mallocs for short strings &lt;= 15B</text>
+      <text x="12" y="132" fill="#cbd5e1" font-size="10.5">Immediate register pass &amp; zero GC tracing overhead</text>
+    </g>
+  </g>
+</svg>

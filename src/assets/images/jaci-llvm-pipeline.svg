@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 320" width="100%" height="100%" style="background:#0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <defs>
+    <linearGradient id="pGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1e40af" />
+    </linearGradient>
+    <linearGradient id="optGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#065f46" />
+    </linearGradient>
+    <filter id="pShadow">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <text x="460" y="32" text-anchor="middle" fill="#f8fafc" font-size="18" font-weight="700">Jaci Multi-Tier Compilation &amp; Optimization Architecture</text>
+
+  <!-- Step 1 -->
+  <g transform="translate(30, 65)">
+    <rect width="180" height="190" rx="8" fill="url(#pGrad)" filter="url(#pShadow)"/>
+    <text x="90" y="30" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">1. Luau Bytecode</text>
+    <line x1="20" y1="42" x2="160" y2="42" stroke="#93c5fd" stroke-width="1"/>
+    <text x="15" y="70" fill="#e0f2fe" font-size="11.5">• Stack Register VM</text>
+    <text x="15" y="92" fill="#e0f2fe" font-size="11.5">• Bytecode Inlining</text>
+    <text x="15" y="114" fill="#e0f2fe" font-size="11.5">• Builtin Folding</text>
+    <text x="15" y="136" fill="#e0f2fe" font-size="11.5">• Constant Prop</text>
+    <text x="15" y="165" fill="#bae6fd" font-size="10.5" font-style="italic">Fast JIT Trigger</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <path d="M 220 160 L 245 160" stroke="#60a5fa" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <polygon points="248,160 240,155 240,165" fill="#60a5fa"/>
+
+  <!-- Step 2 -->
+  <g transform="translate(255, 65)">
+    <rect width="180" height="190" rx="8" fill="url(#pGrad)" filter="url(#pShadow)"/>
+    <text x="90" y="30" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">2. HIR / MIR IR</text>
+    <line x1="20" y1="42" x2="160" y2="42" stroke="#93c5fd" stroke-width="1"/>
+    <text x="15" y="70" fill="#e0f2fe" font-size="11.5">• SSA Form Translation</text>
+    <text x="15" y="92" fill="#e0f2fe" font-size="11.5">• Shape Specialization</text>
+    <text x="15" y="114" fill="#e0f2fe" font-size="11.5">• Type Unboxing (i64/f64)</text>
+    <text x="15" y="136" fill="#e0f2fe" font-size="11.5">• Metatable Bypass</text>
+    <text x="15" y="165" fill="#bae6fd" font-size="10.5" font-style="italic">High-Level Semantics</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <path d="M 445 160 L 470 160" stroke="#34d399" stroke-width="2.5"/>
+  <polygon points="473,160 465,155 465,165" fill="#34d399"/>
+
+  <!-- Step 3 -->
+  <g transform="translate(480, 65)">
+    <rect width="180" height="190" rx="8" fill="url(#optGrad)" filter="url(#pShadow)"/>
+    <text x="90" y="30" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">3. LLVM IR Pass</text>
+    <line x1="20" y1="42" x2="160" y2="42" stroke="#a7f3d0" stroke-width="1"/>
+    <text x="15" y="70" fill="#d1fae5" font-size="11.5">• SROA Table Scalar</text>
+    <text x="15" y="92" fill="#d1fae5" font-size="11.5">• GVN &amp; Alias Scopes</text>
+    <text x="15" y="114" fill="#d1fae5" font-size="11.5">• Loop Auto-Vectorize</text>
+    <text x="15" y="136" fill="#d1fae5" font-size="11.5">• Barrier Elimination</text>
+    <text x="15" y="165" fill="#a7f3d0" font-size="10.5" font-style="italic">Whole-Function Opt</text>
+  </g>
+
+  <!-- Arrow 3 -->
+  <path d="M 670 160 L 695 160" stroke="#34d399" stroke-width="2.5"/>
+  <polygon points="698,160 690,155 690,165" fill="#34d399"/>
+
+  <!-- Step 4 -->
+  <g transform="translate(705, 65)">
+    <rect width="180" height="190" rx="8" fill="url(#optGrad)" filter="url(#pShadow)"/>
+    <text x="90" y="30" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">4. Native Execution</text>
+    <line x1="20" y1="42" x2="160" y2="42" stroke="#a7f3d0" stroke-width="1"/>
+    <text x="15" y="70" fill="#d1fae5" font-size="11.5">• AVX2 / AVX-512 / NEON</text>
+    <text x="15" y="92" fill="#d1fae5" font-size="11.5">• Direct Hardware Registers</text>
+    <text x="15" y="114" fill="#d1fae5" font-size="11.5">• Zero-Cost FFI Calls</text>
+    <text x="15" y="136" fill="#d1fae5" font-size="11.5">• Sub-Microsecond Loops</text>
+    <text x="15" y="165" fill="#6ee7b7" font-size="10.5" font-style="italic">Near-Zero Overhead</text>
+  </g>
+
+  <!-- Bottom note -->
+  <text x="460" y="295" text-anchor="middle" fill="#94a3b8" font-size="12">100% Backward Compatible with Vanilla Luau • Memory Safe • Full Sandboxing Preserved</text>
+</svg>

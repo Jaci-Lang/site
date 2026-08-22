@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 380" width="100%" height="100%" style="background:#0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <defs>
+    <linearGradient id="ffiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+    <linearGradient id="ffiSecGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#047857" />
+    </linearGradient>
+  </defs>
+
+  <text x="450" y="34" text-anchor="middle" fill="#f8fafc" font-size="19" font-weight="700">Native FFI Dispatch Architecture &amp; Capability Security</text>
+
+  <!-- Step 1: C Declaration Parser -->
+  <g transform="translate(30, 65)">
+    <rect width="255" height="250" rx="8" fill="#1e293b" stroke="#3b82f6" stroke-width="1.2"/>
+    <rect width="255" height="38" rx="8" fill="url(#ffiGrad)"/>
+    <rect y="30" width="255" height="8" fill="#1d4ed8"/>
+    <text x="127" y="24" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="700">1. C Declaration Parser (ffi.cdef)</text>
+
+    <g transform="translate(15, 52)" font-size="11" fill="#cbd5e1">
+      <text x="0" y="16" fill="#93c5fd" font-weight="600">• In-VM AST Type Parser</text>
+      <text x="10" y="32" fill="#94a3b8">Parses typedefs, structs, prototypes</text>
+      <text x="0" y="54" fill="#93c5fd" font-weight="600">• Natural Struct Alignment</text>
+      <text x="10" y="70" fill="#94a3b8">Calculates byte offsets &amp; padding</text>
+      <text x="0" y="92" fill="#93c5fd" font-weight="600">• Sized Extended Types</text>
+      <text x="10" y="108" fill="#94a3b8">i8..i64, u8..u64, f32/f64, unit</text>
+      <text x="0" y="130" fill="#93c5fd" font-weight="600">• Direct Symbol Binding</text>
+      <text x="10" y="146" fill="#94a3b8">Binds to ffi.C or loaded shared libs</text>
+    </g>
+  </g>
+
+  <!-- Step 2: Calling Convention Dispatch -->
+  <g transform="translate(322, 65)">
+    <rect width="255" height="250" rx="8" fill="#1e293b" stroke="#10b981" stroke-width="1.2"/>
+    <rect width="255" height="38" rx="8" fill="url(#ffiSecGrad)"/>
+    <rect y="30" width="255" height="8" fill="#047857"/>
+    <text x="127" y="24" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="700">2. Register Trampoline</text>
+
+    <g transform="translate(15, 52)" font-size="11" fill="#cbd5e1">
+      <text x="0" y="16" fill="#6ee7b7" font-weight="600">• Direct System V AMD64 ABI</text>
+      <text x="10" y="32" fill="#94a3b8">rdi, rsi, rdx, rcx, r8, r9 (ints/ptrs)</text>
+      <text x="0" y="54" fill="#6ee7b7" font-weight="600">• Direct SSE / SIMD Mapping</text>
+      <text x="10" y="70" fill="#94a3b8">xmm0..xmm7 for float / double</text>
+      <text x="0" y="92" fill="#6ee7b7" font-weight="600">• Zero-Cost Native Call</text>
+      <text x="10" y="108" fill="#94a3b8">Direct call ccc without C++ wrapper</text>
+      <text x="0" y="130" fill="#6ee7b7" font-weight="600">• Direct Memory Ops</text>
+      <text x="10" y="146" fill="#94a3b8">ffi.read / ffi.write raw buffers</text>
+    </g>
+  </g>
+
+  <!-- Step 3: Capability Security -->
+  <g transform="translate(615, 65)">
+    <rect width="255" height="250" rx="8" fill="#1e293b" stroke="#a855f7" stroke-width="1.2"/>
+    <rect width="255" height="38" rx="8" fill="#7e22ce"/>
+    <rect y="30" width="255" height="8" fill="#6b21a8"/>
+    <text x="127" y="24" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="700">3. Memory Safety &amp; Modes</text>
+
+    <g transform="translate(15, 52)" font-size="11" fill="#cbd5e1">
+      <text x="0" y="16" fill="#d8b4fe" font-weight="600">• Security Modes (ffi.mode)</text>
+      <text x="10" y="32" fill="#94a3b8">permissive | strict | disabled</text>
+      <text x="0" y="54" fill="#d8b4fe" font-weight="600">• Guard Page Validation</text>
+      <text x="10" y="70" fill="#94a3b8">ffi.isSafe(ptr >= 0x10000) traps segfault</text>
+      <text x="0" y="92" fill="#d8b4fe" font-weight="600">• Library Whitelisting</text>
+      <text x="10" y="108" fill="#94a3b8">allowLibrary / denyLibrary policies</text>
+      <text x="0" y="130" fill="#d8b4fe" font-weight="600">• Clean Error Handling</text>
+      <text x="10" y="146" fill="#94a3b8">Traps faults to Luau runtime errors</text>
+    </g>
+  </g>
+
+  <!-- Footer -->
+  <text x="450" y="350" text-anchor="middle" fill="#94a3b8" font-size="12">Near-zero-cost foreign library interop with configurable runtime safety boundaries</text>
+</svg>

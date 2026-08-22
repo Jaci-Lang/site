@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 480" width="100%" height="100%" style="background:#0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <defs>
+    <linearGradient id="gradHeader" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+    <linearGradient id="gradTuned" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#047857" />
+    </linearGradient>
+    <linearGradient id="gradBox" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Title -->
+  <text x="450" y="38" text-anchor="middle" fill="#f8fafc" font-size="20" font-weight="700">Memory Representation: Upstream LuaTable vs Jaci Shape-Specialized Storage</text>
+
+  <!-- Left: Upstream LuaTable -->
+  <g transform="translate(40, 65)">
+    <rect width="380" height="380" rx="10" fill="url(#gradBox)" stroke="#334155" stroke-width="1.5" filter="url(#shadow)"/>
+    <rect width="380" height="42" rx="10" fill="url(#gradHeader)"/>
+    <rect y="32" width="380" height="10" fill="#1d4ed8"/>
+    <text x="190" y="27" text-anchor="middle" fill="#ffffff" font-size="15" font-weight="700">Standard LuaTable (Generic Hash / Array)</text>
+
+    <!-- Content fields -->
+    <g transform="translate(20, 60)" font-size="12" fill="#cbd5e1">
+      <rect width="340" height="28" rx="4" fill="#334155" opacity="0.6"/>
+      <text x="12" y="19" fill="#93c5fd" font-weight="600">CommonHeader</text>
+      <text x="150" y="19" fill="#94a3b8">gc | tt | marked | memcat</text>
+      
+      <rect y="36" width="340" height="28" rx="4" fill="#334155" opacity="0.4"/>
+      <text x="12" y="55" fill="#93c5fd" font-weight="600">Table Metadata</text>
+      <text x="150" y="55" fill="#94a3b8">readonly, safeenv, lsizenode, tmcache</text>
+
+      <rect y="72" width="340" height="28" rx="4" fill="#334155" opacity="0.6"/>
+      <text x="12" y="91" fill="#93c5fd" font-weight="600">Metatable*</text>
+      <text x="150" y="91" fill="#94a3b8">struct Table* or NULL</text>
+
+      <rect y="108" width="340" height="40" rx="4" fill="#334155" opacity="0.4"/>
+      <text x="12" y="127" fill="#60a5fa" font-weight="600">array*</text>
+      <text x="150" y="127" fill="#94a3b8">TValue[sizearray] (Boxed: 16B/val)</text>
+      <text x="150" y="142" fill="#64748b" font-size="11">[tag: 4B, val: 8B, pad: 4B]</text>
+
+      <rect y="156" width="340" height="60" rx="4" fill="#334155" opacity="0.6"/>
+      <text x="12" y="178" fill="#60a5fa" font-weight="600">node* (Hash Part)</text>
+      <text x="150" y="178" fill="#94a3b8">LuaNode[2^lsizenode] (32B/node)</text>
+      <text x="150" y="195" fill="#64748b" font-size="11">TValue val (16B) + TKey key (16B)</text>
+      <text x="150" y="209" fill="#f87171" font-size="10.5">Collision chains &amp; indirect traversal</text>
+
+      <rect y="224" width="340" height="48" rx="4" fill="#ef4444" opacity="0.15" stroke="#ef4444" stroke-width="1"/>
+      <text x="12" y="244" fill="#fca5a5" font-weight="600">Access Cost:</text>
+      <text x="100" y="244" fill="#f87171">~8–25 ns / op (Hash + Chain + Tag Check)</text>
+      <text x="12" y="262" fill="#cbd5e1" font-size="11">Memory Churn: Dynamic rehashing &amp; heavy GC boxing</text>
+    </g>
+  </g>
+
+  <!-- Right: Jaci Specialized Table & SROA -->
+  <g transform="translate(480, 65)">
+    <rect width="380" height="380" rx="10" fill="url(#gradBox)" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+    <rect width="380" height="42" rx="10" fill="url(#gradTuned)"/>
+    <rect y="32" width="380" height="10" fill="#047857"/>
+    <text x="190" y="27" text-anchor="middle" fill="#ffffff" font-size="15" font-weight="700">Jaci Specialized Shape &amp; Packed Storage</text>
+
+    <!-- Content fields -->
+    <g transform="translate(20, 60)" font-size="12" fill="#cbd5e1">
+      <rect width="340" height="28" rx="4" fill="#064e3b" opacity="0.6"/>
+      <text x="12" y="19" fill="#6ee7b7" font-weight="600">ShapeHeader</text>
+      <text x="150" y="19" fill="#a7f3d0">shape_id (uint32) | slot_count | flags</text>
+      
+      <rect y="36" width="340" height="28" rx="4" fill="#064e3b" opacity="0.4"/>
+      <text x="12" y="55" fill="#6ee7b7" font-weight="600">Fast Bit Flags</text>
+      <text x="150" y="55" fill="#a7f3d0">readonly (1-bit freeze), no_metamethod</text>
+
+      <rect y="72" width="340" height="34" rx="4" fill="#064e3b" opacity="0.6"/>
+      <text x="12" y="93" fill="#6ee7b7" font-weight="600">Packed Array</text>
+      <text x="150" y="86" fill="#a7f3d0">Contiguous raw double/i64 (8B/val)</text>
+      <text x="150" y="100" fill="#34d399" font-size="11">Zero boxing overhead | SIMD Vectorizable</text>
+
+      <rect y="114" width="340" height="44" rx="4" fill="#064e3b" opacity="0.4"/>
+      <text x="12" y="133" fill="#6ee7b7" font-weight="600">Shape Slots</text>
+      <text x="150" y="133" fill="#a7f3d0">Fixed Offset Property Fields (e.g. x, y, z)</text>
+      <text x="150" y="149" fill="#34d399" font-size="11">Direct LLVM GEP / SROA scalar registers</text>
+
+      <rect y="166" width="340" height="50" rx="4" fill="#064e3b" opacity="0.6"/>
+      <text x="12" y="185" fill="#6ee7b7" font-weight="600">PIC Fast Dispatch</text>
+      <text x="150" y="185" fill="#a7f3d0">2-Way Branch-Predicted Jump Cache</text>
+      <text x="150" y="201" fill="#34d399" font-size="11">2-Cycle register bitmask hash fallback</text>
+
+      <rect y="224" width="340" height="48" rx="4" fill="#10b981" opacity="0.15" stroke="#10b981" stroke-width="1"/>
+      <text x="12" y="244" fill="#a7f3d0" font-weight="600">Access Cost:</text>
+      <text x="100" y="244" fill="#34d399">&lt; 0.5–1.0 ns / op (Direct Slot / Register)</text>
+      <text x="12" y="262" fill="#cbd5e1" font-size="11">Zero-cost Metatable Bypass &amp; In-Place Freeze</text>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400" width="100%" height="100%" style="background:#0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <defs>
+    <linearGradient id="warnGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ef4444" />
+      <stop offset="100%" stop-color="#991b1b" />
+    </linearGradient>
+    <linearGradient id="succGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#047857" />
+    </linearGradient>
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <filter id="cShadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Title -->
+  <text x="450" y="36" text-anchor="middle" fill="#f8fafc" font-size="19" font-weight="700">Native CodeGen: Interrupt Check &amp; Register Allocation Strategy</text>
+
+  <!-- Left: Upstream/Old JIT Spilling -->
+  <g transform="translate(40, 65)">
+    <rect width="380" height="300" rx="10" fill="url(#cardGrad)" stroke="#334155" stroke-width="1.5" filter="url(#cShadow)"/>
+    <rect width="380" height="40" rx="10" fill="url(#warnGrad)"/>
+    <rect y="30" width="380" height="10" fill="#991b1b"/>
+    <text x="190" y="26" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">Inline Register Spill (Every Loop Iteration)</text>
+
+    <g transform="translate(20, 56)" font-size="11.5" fill="#cbd5e1">
+      <rect width="340" height="42" rx="4" fill="#334155" opacity="0.6"/>
+      <text x="12" y="20" fill="#fca5a5" font-weight="600">1. Unconditional Stack Spill</text>
+      <text x="12" y="35" fill="#94a3b8">regs.spill() stores ALL live GPRs/SIMD to stack</text>
+
+      <rect y="50" width="340" height="34" rx="4" fill="#334155" opacity="0.4"/>
+      <text x="12" y="70" fill="#fca5a5" font-weight="600">2. Fast Path Check</text>
+      <text x="150" y="70" fill="#94a3b8">cb.interrupt != nullptr</text>
+
+      <rect y="92" width="340" height="42" rx="4" fill="#334155" opacity="0.6"/>
+      <text x="12" y="112" fill="#fca5a5" font-weight="600">3. Reload Registers</text>
+      <text x="12" y="127" fill="#94a3b8">Reloads spilled values immediately on resume</text>
+
+      <rect y="142" width="340" height="70" rx="4" fill="#ef4444" opacity="0.15" stroke="#ef4444" stroke-width="1"/>
+      <text x="12" y="162" fill="#fca5a5" font-weight="700">Cost: O(live values) Stores &amp; Loads</text>
+      <text x="12" y="180" fill="#f87171" font-size="11">• Loop back-edges evict registers on every iteration</text>
+      <text x="12" y="196" fill="#f87171" font-size="11">• Severe register pressure penalty on AArch64 / x64</text>
+    </g>
+  </g>
+
+  <!-- Right: Jaci Out-of-Line Preserved Handler -->
+  <g transform="translate(480, 65)">
+    <rect width="380" height="300" rx="10" fill="url(#cardGrad)" stroke="#059669" stroke-width="1.5" filter="url(#cShadow)"/>
+    <rect width="380" height="40" rx="10" fill="url(#succGrad)"/>
+    <rect y="30" width="380" height="10" fill="#047857"/>
+    <text x="190" y="26" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">Jaci Out-of-Line Preservation (Zero Inline Spill)</text>
+
+    <g transform="translate(20, 56)" font-size="11.5" fill="#cbd5e1">
+      <rect width="340" height="42" rx="4" fill="#064e3b" opacity="0.6"/>
+      <text x="12" y="20" fill="#6ee7b7" font-weight="600">1. Zero-Spill Fast Path</text>
+      <text x="12" y="35" fill="#a7f3d0">1 Load + Cmp + Branch (Zero register evictions)</text>
+
+      <rect y="50" width="340" height="34" rx="4" fill="#064e3b" opacity="0.4"/>
+      <text x="12" y="70" fill="#6ee7b7" font-weight="600">2. Normal Execution</text>
+      <text x="150" y="70" fill="#a7f3d0">Live SSA values stay in CPU registers</text>
+
+      <rect y="92" width="340" height="42" rx="4" fill="#064e3b" opacity="0.6"/>
+      <text x="12" y="112" fill="#6ee7b7" font-weight="600">3. Out-of-Line Callee Frame</text>
+      <text x="12" y="127" fill="#a7f3d0">Cold path allocates 528B frame to save GPRs/SIMD</text>
+
+      <rect y="142" width="340" height="70" rx="4" fill="#10b981" opacity="0.15" stroke="#10b981" stroke-width="1"/>
+      <text x="12" y="162" fill="#a7f3d0" font-weight="700">Cost: 0 Extra Cycles in Fast Path</text>
+      <text x="12" y="180" fill="#34d399" font-size="11">• Loop bodies keep values in registers across iterations</text>
+      <text x="12" y="196" fill="#34d399" font-size="11">• Up to 2.0x+ speedup on high register-pressure loops</text>
+    </g>
+  </g>
+</svg>

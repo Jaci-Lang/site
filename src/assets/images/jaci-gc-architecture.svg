@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" width="100%" height="100%" style="background:#0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <defs>
+    <linearGradient id="gcGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#0369a1" />
+    </linearGradient>
+    <linearGradient id="gcGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#065f46" />
+    </linearGradient>
+  </defs>
+
+  <text x="450" y="32" text-anchor="middle" fill="#f8fafc" font-size="18" font-weight="700">Jaci Low-Latency Garbage Collector Architecture</text>
+
+  <!-- Card 1: Zero-Syscall Page Pool -->
+  <g transform="translate(40, 65)">
+    <rect width="250" height="230" rx="8" fill="#1e293b" stroke="#0ea5e9" stroke-width="1.2"/>
+    <rect width="250" height="36" rx="8" fill="url(#gcGrad1)"/>
+    <rect y="28" width="250" height="8" fill="#0369a1"/>
+    <text x="125" y="23" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="700">Zero-Syscall Page Pool</text>
+    
+    <g transform="translate(15, 52)" font-size="11.5" fill="#cbd5e1">
+      <text x="0" y="16" fill="#7dd3fc" font-weight="600">• Size-Segregated Cache</text>
+      <text x="10" y="34" fill="#94a3b8">16KB &amp; 32KB block pools</text>
+      <text x="0" y="60" fill="#7dd3fc" font-weight="600">• O(1) Page Recycling</text>
+      <text x="10" y="78" fill="#94a3b8">Empty pages stay in hot cache</text>
+      <text x="0" y="104" fill="#7dd3fc" font-weight="600">• No OS malloc/free Churn</text>
+      <text x="10" y="122" fill="#94a3b8">Zero page faults in steady-state</text>
+      <text x="0" y="148" fill="#38bdf8" font-size="11">Result: Massive alloc throughput</text>
+    </g>
+  </g>
+
+  <!-- Card 2: Vectorized Marking & Prefetch -->
+  <g transform="translate(325, 65)">
+    <rect width="250" height="230" rx="8" fill="#1e293b" stroke="#10b981" stroke-width="1.2"/>
+    <rect width="250" height="36" rx="8" fill="url(#gcGrad2)"/>
+    <rect y="28" width="250" height="8" fill="#065f46"/>
+    <text x="125" y="23" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="700">Vectorized 4-Way Marking</text>
+    
+    <g transform="translate(15, 52)" font-size="11.5" fill="#cbd5e1">
+      <text x="0" y="16" fill="#6ee7b7" font-weight="600">• 4-Way Loop Unrolling</text>
+      <text x="10" y="34" fill="#94a3b8">Scans 4 TValues in parallel</text>
+      <text x="0" y="60" fill="#6ee7b7" font-weight="600">• Cache Line Prefetching</text>
+      <text x="10" y="78" fill="#94a3b8">__builtin_prefetch on buckets</text>
+      <text x="0" y="104" fill="#6ee7b7" font-weight="600">• Non-Collectable Fast-Path</text>
+      <text x="10" y="122" fill="#94a3b8">Skips i64/f64/bool recursion</text>
+      <text x="0" y="148" fill="#34d399" font-size="11">Result: 2.4x faster GC traversal</text>
+    </g>
+  </g>
+
+  <!-- Card 3: Non-Blocking Propagation -->
+  <g transform="translate(610, 65)">
+    <rect width="250" height="230" rx="8" fill="#1e293b" stroke="#a855f7" stroke-width="1.2"/>
+    <rect width="250" height="36" rx="8" fill="#7e22ce"/>
+    <rect y="28" width="250" height="8" fill="#6b21a8"/>
+    <text x="125" y="23" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="700">Multi-Pass Propagation</text>
+    
+    <g transform="translate(15, 52)" font-size="11.5" fill="#cbd5e1">
+      <text x="0" y="16" fill="#d8b4fe" font-weight="600">• Iterative Gray Draining</text>
+      <text x="10" y="34" fill="#94a3b8">Cleans dirty sets incrementally</text>
+      <text x="0" y="60" fill="#d8b4fe" font-weight="600">• Bounded STW Atomic Pause</text>
+      <text x="10" y="78" fill="#94a3b8">Outstanding atomic work O(1)</text>
+      <text x="0" y="104" fill="#d8b4fe" font-weight="600">• Branch-Hinted Barriers</text>
+      <text x="10" y="122" fill="#94a3b8">LUAU_UNLIKELY write barriers</text>
+      <text x="0" y="148" fill="#c084fc" font-size="11">Result: Sub-500µs max pauses</text>
+    </g>
+  </g>
+
+  <!-- Footer note -->
+  <text x="450" y="325" text-anchor="middle" fill="#94a3b8" font-size="12">Continuous real-time mutator execution without frame drops in 60/120 FPS workloads</text>
+</svg>

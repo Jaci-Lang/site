@@ -8,6 +8,9 @@ import starlight from "@astrojs/starlight";
 import tailwindcss from "@tailwindcss/vite";
 import remarkLuauPlayground from "./src/plugins/remark-luau-playground";
 
+import starlightSiteGraph from 'starlight-site-graph';
+import starlightImageZoom from 'starlight-image-zoom';
+
 // https://astro.build/config
 export default defineConfig({
   site: 'https://jaci-lang.github.io',
@@ -41,6 +44,10 @@ export default defineConfig({
       }
     },
     starlight({
+      plugins: [
+        starlightSiteGraph(),
+        starlightImageZoom()
+      ],
       title: "Jaci",
       favicon: "/favicon.svg",
       head: [
