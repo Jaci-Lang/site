@@ -29,6 +29,49 @@ local isReady: boolean = true
 local co: thread = coroutine.running()
 ```
 
+### Extended Primitive & Numeric Types
+
+Jaci extends the builtin type environment with explicit primitive and sized numeric types for systems programming, binary buffer operations, and native FFI interop:
+
+#### Unit & Void Types
+* `unit`: Represents the unit type (bound to `nil`), useful for explicitly declaring that a function returns no meaningful value (e.g. `() -> unit`).
+* `void`: Alias for `unit` / `nil` (e.g. `() -> void`).
+
+```luau
+local function logMessage(msg: string): unit
+    print(msg)
+end
+```
+
+#### Sized Signed Integers
+* `int`, `int8`, `int16`, `int32`, `int64`
+* `i8`, `i16`, `i32`, `i64`
+
+```luau
+local offset: int32 = 1024
+local counter: i64 = 5000000000i
+```
+
+#### Sized Unsigned Integers
+* `uint`, `uint8`, `uint16`, `uint32`, `uint64`
+* `u8`, `u16`, `u32`, `u64`
+* `byte` (alias for `uint8` / `u8`)
+
+```luau
+local header: uint16 = 0xABCD
+local mask: byte = 0xFF
+```
+
+#### Floating-Point Primitives
+* `float`, `float32`, `f32`
+* `double`, `float64`, `f64`
+* `number` (IEEE 754 double precision)
+
+```luau
+local ratio: float32 = 0.75
+local precisionVal: double = 3.141592653589793
+```
+
 Some types have special syntax: 
 * `table` and `function` are not represented by name, but have their dedicated syntax as covered in this [syntax document](../../syntax)
 * `userdata` is represented by [concrete types](../roblox-types), and
