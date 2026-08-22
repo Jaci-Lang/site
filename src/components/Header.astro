@@ -16,9 +16,9 @@ const shouldRenderSearch =
 const currentPath = Astro.url.pathname;
 const base = import.meta.env.BASE_URL.replace(/\/$/, ''); // e.g. '/site'
 const isHomePath = currentPath === '/' || currentPath === `${base}/` || currentPath === base;
-const isNewsPath = currentPath.startsWith(`${base}/news`) || currentPath.startsWith('/news');
+const isBlogPath = currentPath.startsWith(`${base}/blog`) || currentPath.startsWith('/blog') || currentPath.startsWith(`${base}/news`) || currentPath.startsWith('/news');
 const isBrandPath = currentPath === `${base}/brand` || currentPath === `${base}/brand/`;
-const isDocsPath = !isHomePath && !isNewsPath && !isBrandPath;
+const isDocsPath = !isHomePath && !isBlogPath && !isBrandPath;
 ---
 
 <div class="header">
@@ -30,10 +30,10 @@ const isDocsPath = !isHomePath && !isNewsPath && !isBrandPath;
             Learn
         </a>
         <a
-            href="/site/news"
-            aria-current={isNewsPath ? "page" : undefined}
+            href="/site/blog"
+            aria-current={isBlogPath ? "page" : undefined}
         >
-            News
+            Blog
         </a>
     </nav>
     <div class="sl-flex print:hidden">

@@ -2,7 +2,16 @@
 title: "How We Reached Near-Zero Overhead: Engineering the State-of-the-Art Luau & Jaci VM"
 description: "A comprehensive deep dive into Jaci's multi-tier compilation pipeline, LLVM table shape specialization, zero-syscall garbage collection, out-of-line CodeGen interrupt handling, and SIMD optimizations."
 date: 2026-08-22
-author: "Júlia Klee & The Jaci Engineering Team"
+authors:
+  - name: "Júlia Klee"
+    title: "Creator of Jaci"
+    url: "https://github.com/kleeedolinux"
+tags:
+  - "Virtual Machine"
+  - "Compiler"
+  - "LLVM"
+  - "Performance"
+  - "Garbage Collection"
 ---
 
 Dynamic scripting languages have historically carried an inescapable performance tax. In traditional implementations, every single operation often involves tagged value boxing, dynamic dictionary lookups, pointer indirection, cache line thrashing, register spilling across interrupt boundaries, and Stop-The-World garbage collection pauses. In real-time game engines, physical simulations, low-latency financial systems, and high-concurrency network servers, every microsecond spent resolving a hash bucket or traversing an unspecialized object model is compute time stolen from core application logic. 

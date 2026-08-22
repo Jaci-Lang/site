@@ -5,7 +5,7 @@ import { Image } from 'astro:assets';
 const { hasSidebar } = Astro.locals.starlightRoute;
 
 const isHomepage = Astro.locals.starlightRoute.id === '';
-const isBlog = Astro.locals.starlightRoute.id.startsWith("news");
+const isBlog = Astro.locals.starlightRoute.id.startsWith("blog") || Astro.locals.starlightRoute.id.startsWith("news");
 const isBrandPage = Astro.locals.starlightRoute.id === 'brand';
 const hasFooter = !hasSidebar && (isHomepage || isBlog || isBrandPage);
 

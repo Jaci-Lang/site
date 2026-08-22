@@ -1,7 +1,7 @@
 ---
 import Default from '@astrojs/starlight/components/ContentPanel.astro'
 
-const isBlogPage = Astro.locals.starlightRoute.id.startsWith("news")
+const isBlogPage = Astro.locals.starlightRoute.id.startsWith("blog") || Astro.locals.starlightRoute.id.startsWith("news")
 const isBrandPage = Astro.locals.starlightRoute.id === "brand"
 ---
 

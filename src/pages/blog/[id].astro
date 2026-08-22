@@ -1,0 +1,341 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import { Icon } from '@astrojs/starlight/components';
+import { getCollection, render } from 'astro:content';
+import BetterLinkCard from '../../components/BetterLinkCard.astro';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog');
+  const sorted = posts.sort((a, b) => new Date(b.data.date).valueOf() - new Date(a.data.date).valueOf());
+
+  return sorted.map((post, index) => ({
+    params: { id: post.id },
+    props: {
+      post,
+      prev: sorted[index + 1] || null,
+      next: sorted[index - 1] || null,
+    },
+  }));
+}
+
+interface AuthorData {
+  name: string;
+  title?: string;
+  url?: string;
+  picture?: string;
+}
+
+const { post, prev, next } = Astro.props;
+const { Content } = await render(post);
+
+// Authors normalization
+let authors: AuthorData[] = [];
+if (post.data.authors && post.data.authors.length > 0) {
+  authors = post.data.authors.map((a: any) => (typeof a === 'string' ? { name: a } : a));
+} else if (post.data.author) {
+  authors = [typeof post.data.author === 'string' ? { name: post.data.author } : post.data.author];
+}
+
+// Reading time calculation
+const wordCount = post.body ? post.body.split(/\s+/).filter(Boolean).length : 0;
+const readingTimeMinutes = Math.max(1, Math.ceil(wordCount / 200));
+const readingTimeText = `${readingTimeMinutes} min read (${wordCount.toLocaleString()} words)`;
+
+// Formatted Date
+const formattedDate = new Date(post.data.date).toLocaleDateString('en-US', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+  timeZone: 'UTC',
+});
+
+// Edit URL & Issue URL
+let editUrl = `https://github.com/jaci-lang/jaci/edit/main/site/src/content/blog/${post.id}.md`;
+if (typeof post.data.editUrl === 'string') {
+  editUrl = post.data.editUrl;
+}
+const showEditLink = post.data.editUrl !== false;
+const issueUrl = `https://github.com/jaci-lang/jaci/issues/new?title=${encodeURIComponent(`Blog feedback: ${post.data.title}`)}`;
+---
+
+<StarlightPage
+  frontmatter={{
+    title: post.data.title,
+    description: post.data.description,
+    template: 'splash',
+    prev: false,
+    next: false,
+  }}
+>
+  <header class="blog-post-header">
+    <div class="post-meta-strip">
+      <span class="meta-item">
+        <Icon name="calendar" size="1.1em" class="meta-icon" />
+        <time datetime={new Date(post.data.date).toISOString()}>{formattedDate}</time>
+      </span>
+      <span class="meta-separator">·</span>
+      <span class="meta-item">
+        <Icon name="puzzle" size="1.1em" class="meta-icon" />
+        <span>{readingTimeText}</span>
+      </span>
+    </div>
+
+    {authors.length > 0 && (
+      <div class="authors-container">
+        <div class="authors-label">Written by</div>
+        <div class="authors-grid">
+          {authors.map((author) => (
+            <div class="author-card">
+              {author.picture ? (
+                <img src={author.picture} alt={author.name} class="author-avatar" />
+              ) : (
+                <div class="author-avatar-placeholder">
+                  {author.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                </div>
+              )}
+              <div class="author-details">
+                {author.url ? (
+                  <a href={author.url} target="_blank" rel="noopener noreferrer" class="author-name-link">
+                    <span class="author-name">{author.name}</span>
+                    <Icon name="external" size="0.9em" class="external-icon" />
+                  </a>
+                ) : (
+                  <span class="author-name">{author.name}</span>
+                )}
+                {author.title && <span class="author-title">{author.title}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {post.data.tags && post.data.tags.length > 0 && (
+      <div class="post-tags-list">
+        {post.data.tags.map((tag: string) => (
+          <span class="post-tag-chip">#{tag}</span>
+        ))}
+      </div>
+    )}
+  </header>
+
+  <article class="blog-post-body">
+    <Content />
+  </article>
+
+  <footer class="blog-post-footer">
+    <div class="footer-actions">
+      {showEditLink && (
+        <a href={editUrl} target="_blank" rel="noopener noreferrer" class="footer-action-link">
+          <Icon name="pencil" size="1.1em" />
+          <span>Edit this page on GitHub</span>
+        </a>
+      )}
+      <a href={issueUrl} target="_blank" rel="noopener noreferrer" class="footer-action-link">
+        <Icon name="open-book" size="1.1em" />
+        <span>Give feedback or report an issue</span>
+      </a>
+    </div>
+
+    <nav class="post-nav">
+      {prev && (
+        <BetterLinkCard title={prev.data.title} href={`${import.meta.env.BASE_URL}/blog/${prev.id}`} class:list={["nav-link"]} direction="left" />
+      )}
+      <BetterLinkCard title="Back to Blog" href={`${import.meta.env.BASE_URL}/blog`} class:list={["nav-link"]} direction="up" />
+      {next && (
+        <BetterLinkCard title={next.data.title} href={`${import.meta.env.BASE_URL}/blog/${next.id}`} class:list={["nav-link"]} direction="right" />
+      )}
+    </nav>
+  </footer>
+</StarlightPage>
+
+<style>
+  .blog-post-header {
+    margin-bottom: 2.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--sl-color-gray-5);
+  }
+
+  .post-meta-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--sl-color-gray-3);
+    font-size: 0.95rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .meta-icon {
+    color: var(--sl-color-accent);
+  }
+
+  .meta-separator {
+    color: var(--sl-color-gray-4);
+  }
+
+  .authors-container {
+    margin: 1.25rem 0;
+    padding: 1rem 1.25rem;
+    background-color: var(--sl-color-gray-6);
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.75rem;
+  }
+
+  .authors-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--sl-color-gray-3);
+    margin-bottom: 0.75rem;
+  }
+
+  .authors-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+  }
+
+  .author-card {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+  }
+
+  .author-avatar {
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 9999px;
+    object-fit: cover;
+    border: 2px solid var(--sl-color-accent);
+  }
+
+  .author-avatar-placeholder {
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 9999px;
+    background: linear-gradient(135deg, var(--sl-color-accent), var(--sl-color-purple-high, #8b5cf6));
+    color: var(--sl-color-white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.95rem;
+    border: 2px solid var(--sl-color-gray-4);
+  }
+
+  .author-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .author-name-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    text-decoration: none;
+    color: var(--sl-color-white);
+    font-weight: 600;
+    font-size: 1rem;
+  }
+
+  .author-name-link:hover {
+    color: var(--sl-color-text-accent);
+  }
+
+  .external-icon {
+    opacity: 0.7;
+  }
+
+  .author-name {
+    color: var(--sl-color-white);
+    font-weight: 600;
+    font-size: 1rem;
+  }
+
+  .author-title {
+    color: var(--sl-color-gray-3);
+    font-size: 0.85rem;
+    line-height: 1.3;
+  }
+
+  .post-tags-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .post-tag-chip {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 9999px;
+    background-color: var(--sl-color-gray-6);
+    color: var(--sl-color-gray-2);
+    border: 1px solid var(--sl-color-gray-5);
+  }
+
+  .blog-post-body {
+    line-height: 1.75;
+  }
+
+  .blog-post-footer {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+  }
+
+  .footer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px dashed var(--sl-color-gray-5);
+  }
+
+  .footer-action-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--sl-color-gray-3);
+    font-size: 0.9rem;
+    text-decoration: none;
+    transition: color 0.15s ease;
+  }
+
+  .footer-action-link:hover {
+    color: var(--sl-color-text-accent);
+  }
+
+  .post-nav {
+    display: grid;
+    grid-template-columns: 100%;
+    gap: 1rem;
+  }
+
+  @media (min-width: 50rem) {
+    .post-nav {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+  }
+
+  :root[data-theme='light'] {
+    .author-name {
+      color: var(--sl-color-black);
+    }
+    .author-name-link {
+      color: var(--sl-color-black);
+    }
+  }
+</style>

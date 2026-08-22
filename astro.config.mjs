@@ -27,6 +27,7 @@ export default defineConfig({
     "/typecheck/tables": "/site/types/tables",
     "/typecheck/type-functions": "/site/types/type-functions",
     "/typecheck/unions-and-intersections": "/site/types/unions-and-intersections",
+    "/news": "/site/blog",
   },
 
   markdown: {
@@ -51,7 +52,7 @@ export default defineConfig({
       title: "Jaci",
       favicon: "/favicon.svg",
       head: [
-        { tag: "link", attrs: { rel: "alternate", type: "application/rss+xml", title: "Jaci News", href: "https://jaci-lang.github.io/site/feed.xml" }}
+        { tag: "link", attrs: { rel: "alternate", type: "application/rss+xml", title: "Jaci Blog", href: "https://jaci-lang.github.io/site/feed.xml" }}
       ],
       logo: {
         src: "./logo.svg",
