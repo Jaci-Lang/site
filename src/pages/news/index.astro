@@ -18,7 +18,7 @@ allNews = allNews.sort((a, b) => new Date(b.data.date).valueOf() - new Date(a.da
   <div class="news-list">
       <CardGrid stagger={true}>
           {allNews.map((post) => {
-          const href = `/news/${post.id}`;
+          const href = `${import.meta.env.BASE_URL}/news/${post.id}`;
           const icon = post.data.title.startsWith("Recap") ? "document" : "star";
           return (
           <BetterCard title={post.data.title} icon={icon} href={href}>

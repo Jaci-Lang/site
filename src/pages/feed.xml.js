@@ -10,17 +10,17 @@ export async function GET(context) {
 
   return rss({
     // `<title>` field in output xml
-    title: 'Luau News',
+    title: 'Jaci News',
     // `<description>` field in output xml
     description: 'A small, fast, and embeddable programming language based on Lua with a gradual type system.',
-    site: "https://luau.org",
+    site: "https://jaci-lang.github.io/site",
     // (optional) inject custom xml
     customData: `<language>en-us</language>`,
     items: sorted.map((post) => ({
       title: post.data.title,
       pubDate: post.data.date,
       description: post.data.description,
-      link: `/news/${post.id}`,
+      link: `/site/news/${post.id}`,
       content: sanitizeHtml(parser.render(post.body), { allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img'])})
     })),
   });

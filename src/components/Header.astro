@@ -14,9 +14,10 @@ const shouldRenderSearch =
     config.pagefind ||
     config.components.Search !== "@astrojs/starlight/components/Search.astro";
 const currentPath = Astro.url.pathname;
-const isHomePath = currentPath === "/";
-const isNewsPath = currentPath.startsWith("/news");
-const isBrandPath = currentPath === "/brand" || currentPath === "/brand/";
+const base = import.meta.env.BASE_URL.replace(/\/$/, ''); // e.g. '/site'
+const isHomePath = currentPath === '/' || currentPath === `${base}/` || currentPath === base;
+const isNewsPath = currentPath.startsWith(`${base}/news`) || currentPath.startsWith('/news');
+const isBrandPath = currentPath === `${base}/brand` || currentPath === `${base}/brand/`;
 const isDocsPath = !isHomePath && !isNewsPath && !isBrandPath;
 ---
 
