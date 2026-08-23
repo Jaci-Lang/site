@@ -2,6 +2,8 @@
 slug: compatibility
 title: Compatibility with Lua
 toc: true
+sidebar:
+  order: 6
 ---
 
 Luau is based on Lua 5.1, and as such incorporates all features of 5.1, except for ones that had to be taken out due to sandboxing limitations. Because of backwards compatibility constraints, we don't remove features deprecated by later versions (e.g. we still support `getfenv`/`setfenv`). Later Lua versions introduce new features into the language and new libraries/functions.

@@ -7,7 +7,7 @@ sidebar:
 
 Jaci is an independent Luau fork optimized for general-purpose programming, standalone applications, and native embedding outside Roblox Studio. It retains full backward compatibility with Luau while providing relaxed sandbox constraints, enhanced FFI, and aggressive native code generation.
 
-To get started with Jaci, you can use the `luau` command line binary to run your code and `luau-analyze` to run static analysis (including type checking and linting). You can download these from [a recent release](https://github.com/jaci-lang/jaci/releases).
+To get started with Jaci, use the `luau` command line binary to run your code and `luau-analyze` for static analysis (type checking and linting). The recommended way to install both — along with the KLUR layer and the `jaciup` version manager — is the [one-liner installer](/install). You can also download the binaries directly from [a recent release](https://github.com/Jaci-Lang/jaci/releases).
 
 ## Creating a script
 

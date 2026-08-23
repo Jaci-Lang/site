@@ -2,7 +2,7 @@
 slug: lint
 title: Luau Lints
 sidebar:
-  order: 4
+  order: 5
 ---
 
 Luau comes with a set of linting passes, that help make sure that the code is correct and consistent. Unlike the type checker, that models the behavior of the code thoroughly and points toward type mismatches that are likely to result in runtime errors, the linter is more opinionated and produces warnings that can often be safely ignored, although it's recommended to keep the code clean of the warnings.

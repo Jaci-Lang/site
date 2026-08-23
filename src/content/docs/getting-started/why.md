@@ -2,7 +2,7 @@
 slug: why
 title: Why Jaci?
 sidebar:
-  order: 2
+  order: 3
 ---
 
 Luau was created by Roblox to provide a fast, safe, gradually typed language evolving from Lua 5.1. While Luau delivers an excellent type system and high performance, it is historically tightly integrated with Roblox Studio and designed around a restrictive sandbox model.
