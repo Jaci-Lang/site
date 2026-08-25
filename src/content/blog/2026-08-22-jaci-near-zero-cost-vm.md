@@ -1,7 +1,7 @@
 ---
-title: "How We Reached Near-Zero Overhead: Engineering the State-of-the-Art Luau & Jaci VM"
-description: "A comprehensive deep dive into Jaci's multi-tier compilation pipeline, LLVM table shape specialization, zero-syscall garbage collection, out-of-line CodeGen interrupt handling, and SIMD optimizations."
-date: 2026-08-22
+title: "Engineering Lower VM Tail Latency in Jaci"
+description: "A measurement-first account of Jaci's table and garbage-collector work: the original latency problem, rejected ideas, retained design, benchmark limits, and current LLVM backend reality."
+date: 2026-08-24
 authors:
   - name: "Júlia Klee"
     title: "Creator of Jaci"
@@ -14,196 +14,182 @@ tags:
   - "Garbage Collection"
 ---
 
-Dynamic scripting languages have historically carried an inescapable performance tax. In traditional implementations, every single operation often involves tagged value boxing, dynamic dictionary lookups, pointer indirection, cache line thrashing, register spilling across interrupt boundaries, and Stop-The-World garbage collection pauses. In real-time game engines, physical simulations, low-latency financial systems, and high-concurrency network servers, every microsecond spent resolving a hash bucket or traversing an unspecialized object model is compute time stolen from core application logic. 
+“Near-zero cost” is a useful engineering direction, but it is not a benchmark result. A virtual machine can make one path extremely cheap while moving work into another phase, increasing memory retention, or breaking a rare semantic case. The only defensible claim is narrower: **for a defined workload, on a defined build and machine, a change reduced measured cost without changing observable Luau behavior**.
 
-Upstream Luau made substantial strides in runtime efficiency by introducing a custom register-based bytecode interpreter and an ahead-of-time code generator. However, general-purpose systems workloads demand much more than baseline bytecode interpretation. They require native-grade numeric vectorization, unboxed memory layouts, scalar-replaced allocations, zero-cost foreign function interfaces, and highly deterministic, low-latency garbage collection. 
+This article explains Jaci from that narrower and more useful perspective. It follows the actual line of reasoning behind the recent table and garbage-collector work: what the old implementation did, where latency came from, which attractive optimizations failed, why the retained design is safe, and where the collector still exceeds one millisecond.
 
-In this comprehensive engineering deep dive, we will walk through the architecture, memory layouts, and compiler transformations engineered in the Jaci Runtime. Our goal is to explain exactly how we brought table operations, memory overhead, loop execution, and garbage collection latency toward near-zero cost—achieving less than 1 nanosecond per operation amortized, and sub-500µs tail latency. 
+It also corrects an earlier version of this article. That version presented prototype components and synthetic C++ comparisons as if they were end-to-end VM results. In particular, it overstated runtime table specialization, small-string optimization, interrupt costs, LLVM speedups, and universal sub-millisecond GC latency. Those claims have been removed. The implementation and tests—not the ambition—define the architecture described below.
 
-### The Limitations of Vanilla Luau and the Jaci Philosophy
+## Start with the compatibility boundary
 
-Vanilla Luau is a masterpiece of engineering, but its architecture was fundamentally shaped by the requirements of the Roblox engine. Because of this intense focus on a highly sandboxed, multiplayer gaming environment, vanilla Luau carries severe architectural limitations when applied to general-purpose systems programming. 
+Jaci is an asymmetric superset of Luau: valid Luau programs should retain their behavior, while Jaci may expose additional standalone and systems APIs. That requirement sharply limits VM optimization.
 
-First, Luau aggressively restricts access to the file system, operating system APIs, and network sockets to ensure that untrusted code cannot harm the host machine. Second, there is no direct, zero-cost mechanism to interface with native C or C++ libraries; developers must write heavy wrapper functions and manually push arguments across the Virtual Machine boundary. Third, the Luau Just-In-Time compiler relies on a manual Assembly Builder. While this allows for extremely fast compilation times, a manual assembler simply cannot perform deep, global CPU optimizations such as auto-vectorization across SIMD lanes or inter-block register allocation.
+For tables and garbage collection, preserving behavior means much more than returning the same value in a simple script. Reachability has to remain correct through the array part of a table, through hash nodes, through metatables, and through objects such as closures, threads, suspended coroutines, captured upvalues, buffers, and vectors. A weak-key table must not accidentally keep its keys alive. A weak-value table must not lose a value while another strong root still reaches it. Changing `__mode` during a collection cannot leave the collector applying the old rule to half of the table and the new rule to the other half.
 
-Jaci chose a fundamentally different path. We took the excellent foundation of the Luau language and completely re-engineered the backend to serve as a standalone systems language. By replacing the manual assembly builder with a full LLVM backend and relaxing the restrictive sandbox, Jaci unlocks C-grade execution efficiency and OS-level access. 
+Mutation is the difficult boundary. Incremental collection deliberately allows the program to run between GC slices. During that interval, the program can replace a value, add a key, grow the array part, trigger a hash reallocation, replace a metatable, or request a full collection. A fast scan that is correct only while the table remains frozen is not compatible with Luau. The write barrier and collector state have to make every one of those interleavings safe.
 
-At the core of this architecture is our golden rule, the **Asymmetric Superset Invariant**:
+The public boundary matters too. Jaci retains the existing `LuaTable` representation and the public `lua_gc` behavior. The final change is therefore deliberately less dramatic than the previous article suggested. Jaci did **not** replace every runtime table with a hidden-class object, did not convert numeric arrays into a new unboxed storage format, and did not add a scan cursor to every table. It optimized traversal around the existing Luau representation, where a table still has an array part for integer positions and a hash-node part for other keys.
 
-> **Every single valid Luau program will execute perfectly on Jaci without any modification. However, because Jaci exposes extended systems capabilities, not all Jaci programs will run on vanilla Luau.**
+That choice is central to the result. It keeps the compatibility surface small: one collector-owned continuation understands the old object; the object does not have to understand a new collector.
 
-By breaking out of the sandbox while maintaining complete backward compatibility, Jaci bridges the gap between dynamic scripting ergonomics and systems-level performance.
+## The old problem: an incremental step contained indivisible work
 
-```mermaid
-graph TD
-    subgraph Frontend["Frontend & VM"]
-        A["Luau Source Code"] --> B["Bytecode Compiler"]
-        B --> C["Register-Based VM"]
-    end
-    subgraph MultiTier["Multi-Tier Optimization Pipeline"]
-        C --> D["HIR (Semantic SSA)"]
-        D --> E["MIR (Machine SSA)"]
-        E --> F["LLVM IR Generation"]
-    end
-    subgraph Execution["Hardware Execution"]
-        F --> G["AVX2 / NEON SIMD"]
-        F --> H["Unboxed Register Storage"]
-        F --> I["Zero-Cost Native FFI"]
-    end
-```
+Luau uses an incremental tri-color mark-and-sweep collector. The collector assigns a byte-work budget to each incremental step so the mutator can regain control regularly. Most GC work already obeyed that budget. A large table did not.
 
-## Multi-Tier Compilation & IR Lowering
+When the collector reached a table, `traversetable` walked the entire array and hash storage in one call. The outer collector charged the total work afterward, but that accounting could not undo the pause that had already happened. A nominal 1 KiB GC step could therefore contain a scan of hundreds of thousands of entries.
 
-Upstream Luau features a fast interpreter and native code generators for x64 and AArch64 architectures. While effective for straight-line bytecode translation, these manual assembly builders face fundamental limitations. They lack whole-function auto-vectorization, meaning they cannot group math operations into AVX2 or ARM NEON instructions. They cannot perform global instruction scheduling or inter-block register allocation. Furthermore, they miss advanced optimization passes like Scalar Replacement of Aggregates (SROA) or inter-procedural memory alias disambiguation. As a result, numeric operations remain boxed within tagged value representations, incurring constant memory traffic.
+The decisive reproduction used a native probe around every `lua_gc(LUA_GCSTEP, 1)` call and recorded the collector state on both sides of each step. With a strongly reachable 524,288-entry hash graph, Luau 0.735 produced **16.478–31.218 ms** maximum steps across seven independent processes. The problem was not the overall collection schedule; it was one indivisible operation inside that schedule.
 
-To solve this, Jaci implements a four-tier optimization pipeline that progressively lowers dynamic operations into highly optimized machine representations. 
+This distinction matters. A benchmark that times a whole allocation batch can show throughput, but it cannot identify which collector phase caused the tail. The phase-level probe did.
 
-The journey begins at the **Bytecode and Interpreter Layer**, which executes standard Luau bytecode using a direct-threaded register VM. During this phase, the VM is not just executing code; it is actively observing it. It collects speculative type feedback, monitors branch probability counters, and tracks allocation site statistics. It also performs aggressive constant folding and inline expansion directly at the bytecode level.
+## The reasoning path: optimize, measure, reject
 
-Once a code path becomes hot, execution transitions to the **High-Level IR (HIR)**. This tier lifts the VM's register state into pure Single Static Assignment (SSA) form via abstract execution. The HIR performs path-sensitive fact propagation, tracking value ranges, constant truthiness, semantic types, table shapes, array representations, alias classes, and escape states. Tables are treated as first-class hybrid objects, allowing the compiler to separate shape-based properties from contiguous array elements. The HIR also conducts critical escape analysis: if a table or closure never escapes its local scope, it is marked for virtual allocation. Finally, deoptimization snapshot metadata is embedded at loop headers and side-exit guards, ensuring the VM can seamlessly fall back to the interpreter if any dynamic assumptions fail during execution.
+Several ideas looked faster in isolation and were still wrong for the VM.
 
-Next, the code is lowered into the **Medium-Level IR (MIR)**. This tier translates the high-level operations into concrete machine-level SSA representations operating on unboxed types like raw 64-bit integers, 64-bit floats, and raw memory pointers. The MIR manages explicit memory locations and runs classical SSA optimization passes. Redundant Guard Elimination removes duplicate shape and type checks across dominated blocks. Bounds Check Elimination hoists array bounds checks entirely outside of inner loops. Global Value Numbering eliminates redundant memory reads, and Loop-Invariant Code Motion hoists invariant property loads out of hot loop bodies. Even garbage collection write barriers are systematically stripped away for primitive assignments and newly allocated nursery objects.
+### Manual unrolling and prefetching
 
-Finally, the **LLVM Backend** takes over. It maps the optimized MIR directly into LLVM Intermediate Representation, attaching strict Type-Based Alias Analysis (TBAA) metadata to all memory accesses. This proves to LLVM that certain memory reads and writes will never overlap, enabling aggressive instruction reordering and vectorization. By passing vectorization directives to LLVM, Jaci allows the backend to emit 256-bit AVX2 or 128-bit NEON SIMD instructions for contiguous numeric arrays. The final native calling sequences are emitted directly to CPU registers, completely bypassing intermediate interpreter stack frames.
+Manually unrolling table scans and prefetching future nodes seemed likely to improve cache throughput. Mixed tables did not support that expectation consistently. The added instructions and altered access pattern either produced noise or regressions, so the changes were removed.
 
-```mermaid
-flowchart TD
-    BC["Luau Bytecode"] --> HIR["HIR: Path-Sensitive SSA"]
-    HIR --> TypeInf["Type Inference & Shape Specialization"]
-    TypeInf --> Escape["Escape Analysis (Identify Non-Escaping Tables)"]
-    Escape --> MIR["MIR: Machine Representation SSA"]
-    MIR --> OptPasses["Optimization: GVN + LICM + Guard Elimination + BCE"]
-    OptPasses --> LLVM["LLVM IR Generation (TBAA + Vector Directives)"]
-    LLVM --> Native["Hardware Execution (AVX2 / AVX-512 / ARM NEON)"]
-```
+### A primitive-only tag gate
 
+Another prototype tried to skip generic mark dispatch for groups of primitive table slots. It helped a narrow synthetic shape but reduced an object-heavy churn benchmark from roughly **7.0–7.2 million** allocations per second to roughly **5.1–6.2 million**, with worse pauses. The optimization selected the wrong workload and was reverted.
 
-## Table Shape Specialization and Scalar Replacement
+Jaci retained a smaller version of the idea only where the object model proves it is safe: strings, buffers, and heap vectors cannot contain outgoing GC edges, so `markvalue` can mark those leaf objects directly without sending them through the generic object dispatcher.
 
-In standard Lua and Luau runtimes, the universal data structure is the table. It serves simultaneously as a dynamic dictionary, a record struct, a numeric array, an object instance, and a module namespace. Every single field lookup, such as accessing `point.x`, traditionally executes a multi-step sequence: it hashes the key, finds the node bucket index, walks the collision chain, checks the tag, and finally returns the value. This induces massive tagged boxing overhead, memory fragmentation, CPU pipeline stalls, and cache line misses.
+### More `grayagain` propagation
 
-Jaci solves this by replacing dynamic dictionary probing with **Shape Specialization** (hidden classes) and unboxed packed storage. When multiple tables share identical property keys, Jaci assigns them a shared Shape ID. Property accesses are then specialized into a single SSA shape guard followed by a fixed-offset memory load. This replaces a multi-cycle, 25-instruction hash collision traversal with a single 1-cycle L1 cache read, resulting in phenomenal speedups. 
+Moving more work into an extra propagation pass appeared to reduce the final atomic phase. In the churn workload, however, the sampled logical heap grew from roughly **16 MiB to 95 MiB**. Lower pause time obtained by retaining far more memory is not a free optimization. That design was reverted.
 
-When Jaci's escape analysis determines that a table allocation does not escape its declaring scope—such as a temporary coordinate struct like a 3D vector created inside a math loop—the compiler applies **Scalar Replacement of Aggregates (SROA)**. The table's heap allocation is completely eliminated. The object properties are decomposed directly into CPU scalar registers. Because memory allocation, pointer indirection, and garbage collection tracking drop from linear time to exactly zero, microbenchmarks show a massive speedup for these operations.
+### Early sweep termination
 
-For unspecialized dynamic dictionary accesses that cannot be statically analyzed, Jaci replaces the runtime function call shifts with a direct bitmask in CPU registers. Furthermore, access sites encountering multiple shapes emit a Polymorphic Inline Cache (PIC) with 2-way branch-predicted dispatch before falling back to generic lookups. Finally, dense numeric arrays store values as contiguous unboxed double or int64 arrays, bypassing the 16-byte value containers completely and enabling LLVM auto-vectorization.
+A sweep early-exit prototype improved a contrived fragmented-page case by only about two percent and added a branch to the common live-object path. That trade was rejected as too small and too workload-specific.
 
-![Table Operations Throughput](../../assets/images/jaci-table-ops-throughput.png)
+The retained changes are the ones that survived both semantic testing and representative A/B measurement.
 
-## CodeGen Interrupt Handling: Zero-Spill Fast Paths
+## The retained design: make table marking resumable
 
-In sandboxed runtime environments, compiled loops and function call boundaries must periodically check for execution timeouts, preemption signals, and debugger hooks. This is implemented via an explicit interrupt instruction. When an interrupt occurs, the VM invokes an external C callback. Because this C function adheres to the platform Application Binary Interface (ABI), it is completely free to overwrite all caller-saved volatile CPU registers.
+Jaci adds one table-scan continuation to `global_State`. It stores the active table, observed metatable, array and hash cursors, weak-mode flags, and weak-list state. Individual tables gain no fields and their public representation does not change.
 
-Historically, JIT compilers addressed this ABI constraint by unconditionally spilling all live SSA values from CPU registers to stack spill slots before checking the interrupt flag on every single loop iteration. This imposed a severe memory store and reload penalty on 100% of loop iterations, even though the interrupt callback is null during 99.999% of runtime execution. This constant memory traffic severely restricted register allocation, evicted hot values to RAM, and crippled tight computational loops.
+When a table is larger than the remaining GC budget, the collector:
 
+1. removes the table from the normal gray queue and records it as the active continuation;
+2. scans array values and hash nodes only until it consumes the current byte budget;
+3. keeps the table gray because unvisited strong edges may still point to white objects;
+4. resumes from the saved cursors during the next incremental step;
+5. turns the table black only after all required strong edges have been marked.
 
-```mermaid
-graph TD
-    subgraph Traditional["Traditional Spilling (Every Iteration)"]
-        T1["Loop Back-Edge"] --> T2["Unconditional Stack Spill: Store ALL live registers"]
-        T2 --> T3{"Check: cb.interrupt != null?"}
-        T3 -- "No (99.999% of time)" --> T4["Reload spilled registers from stack"]
-        T4 --> T5["Execute next iteration"]
-        T3 -- "Yes (0.001%)" --> T6["Call C Interrupt Callback"]
-    end
-```
+The cursors solve latency, but they introduce a correctness question: what happens if the mutator changes a slot that the collector has already passed?
 
-Jaci eliminates inline spilling entirely by moving the register preservation cost exclusively into an **Out-of-Line Preserved Handler**. The inline loop back-edge contains only a single load, compare, and conditional branch. In this zero-spill fast path, there are absolutely no stack writes and no stack reads. SSA variables stay perfectly pinned in CPU registers across all loop iterations. 
+The write barrier answers that question. Table writes perform one predictable comparison against the single active continuation pointer. If the write targets that table, Jaci restarts the relevant cursors. Rescanning is conservative, but it prevents a newly stored white object from hiding behind an already scanned position. A resize uses the same restart mechanism.
 
+Metatables require another safeguard. Between chunks, the collector re-reads the table metatable and its `__mode`. If the weak-key or weak-value interpretation changes, the scan restarts under the new rules. The implementation also preserves the weak-list link across partial scans and only removes an eligible empty weak table after a complete scan proves that no entry needs atomic clearing.
 
-```mermaid
-graph TD
-    subgraph Jaci["Jaci Out-of-Line Architecture"]
-        J1["Loop Back-Edge"] --> J2{"Check: cb.interrupt != null?"}
-        J2 -- "No (Fast Path: 99.999%)" --> J3["Zero Spills: Live values remain in registers"]
-        J3 --> J4["Execute next iteration (0 extra cycles)"]
-        J2 -- "Yes (Cold Path: 0.001%)" --> J5["Jump to out-of-line helper"]
-        J5 --> J6["Allocate 528-byte frame: Save x0..x17, q0..q31"]
-        J6 --> J7["Call C Interrupt Callback"]
-        J7 --> J8["Restore all registers & resume loop"]
-    end
-```
+A forced full collection cancels an active continuation, returns the interrupted cycle to a valid sweep state, and starts a complete mark cycle from the roots. This behavior has a dedicated test because simply dropping a cursor without restarting the collector would be unsafe.
 
-If, and only if, an interrupt is actually triggered, execution jumps to a cold out-of-line helper. On AArch64, this helper sets up a 528-byte aligned stack frame, saving the complete volatile register set—including 18 general-purpose registers and 24 SIMD registers—before calling the C callback. Once the callback returns, the helper restores all registers and resumes the loop. By isolating the preservation cost to the cold path, Jaci eliminates all register thrashing in hot loops.
+## Small table and allocator wins around the main fix
 
-## Low-Latency, Zero-Syscall Garbage Collection
+The continuation fixes tail latency. Several smaller changes improve throughput without changing table semantics:
 
-Luau relies on an incremental tri-color mark-and-sweep garbage collector. Under high-throughput allocation workloads, traditional collectors encounter fundamental bottlenecks. When garbage collection pages are swept and emptied, releasing memory immediately to the operating system via system calls and reallocating induces high kernel page faulting, lock contention, and cache pollution. Furthermore, deferring dirty table rescan work to the indivisible Stop-The-World atomic phase creates noticeable latency pauses under write-heavy workloads, and marking deeply nested structures one slot at a time stalls processor execution pipelines.
+- Tables without metatables skip `__mode` lookup entirely.
+- Fully strong hash tables use a separate loop without weak-key and weak-value branches on every node.
+- Atomic weak clearing checks only the sides that are actually weak.
+- `table.clear` bulk-resets hash-node storage instead of rewriting every node field separately.
+- Empty 16 KiB and 32 KiB GC pages enter bounded, size-segregated pools and can be reused before calling the host allocator. The pools are capped at 128 small pages and 32 large pages—at most 3 MiB retained—and are released when the state closes.
+- Leaf objects with no outgoing references are marked directly.
 
-Jaci redesigns the garbage collection subsystem to deliver high throughput alongside deterministic, sub-millisecond pause latencies. The foundation of this redesign is the **Zero-Syscall Page Pool**. The global runtime manages size-segregated free page pools for 16KB and 32KB pages. When sweeping reclaims an empty memory page, it is recycled directly into the hot pool in constant time. Subsequent allocations pop cached hot pages immediately, avoiding OS kernel context switches and memory map locking entirely. 
+These are intentionally local changes. They do not claim that a table lookup has become a one-cycle load, that numeric table values are unboxed, or that temporary tables are universally scalar-replaced. Jaci contains table-specialization and HIR/MIR research components, but the current production JIT path described below is different, and synthetic helper benchmarks are not evidence of end-to-end runtime speedup.
 
-To accelerate the marking phase, Jaci implements **Vectorized 4-Way Marking** and hardware cache prefetching. Table traversal loops are unrolled four ways per iteration, and hardware prefetch instructions are issued on table array slots and hash node buckets well before the pointers are actually dereferenced. Unboxed numeric, boolean, and nil fields take inline non-collectable fast paths, skipping recursive mark dispatches entirely.
+## What the measurements show
 
-Finally, Jaci uses **Multi-Pass Non-Blocking Propagation**. The collector drains dirty sets in small incremental slices concurrently while the application executes. By the time the collector enters the indivisible Stop-The-World atomic phase, the outstanding work is bounded to a constant time factor, reducing atomic pause durations to sub-millisecond intervals.
+The following results compare Jaci with the latest upstream release available during this work, [Luau 0.735](https://github.com/luau-lang/luau/releases/tag/0.735), on the same development machine. Both sides use Release builds and the same benchmark program. They are engineering evidence for these workloads, not universal guarantees for every host or application.
 
-![GC Mutator Pause Latency & Throughput Profile](../../assets/images/jaci-gc-latency-comparison.png)
+| Workload | Luau 0.735 | Jaci | Interpretation |
+| --- | ---: | ---: | --- |
+| 524,288-entry strong hash graph, 1 KiB steps | 16.478–31.218 ms max | 0.057–0.703 ms max across seven processes | Jaci budgets strong-table traversal instead of paying for the complete hash scan in one step. |
+| Same scale, ordinary metatable | 20.800 ms max | 0.028 ms max | Re-reading metatable state between chunks did not restore the old tail. |
+| Emptied 524,288-slot weak-value cache | 3.023 ms max | 1.905 ms max | The public step call can combine sweep pages; individual propagation and sweep work stayed below 0.1 ms. |
+| 400 full collections, 262,144-entry string table | 83.456 ms median | 78.061 ms median | About 6.5% lower full-collection time for this workload. |
+| `table.clear` hash benchmark | 26.625 ms | 22.786 ms | About 14.4% faster bulk clearing in this benchmark. |
 
-## String Memory Overhead and Small String Optimization
+Hardware counters over the traversal workload reported roughly **2.5% fewer instructions** and **4.4% fewer branches** after separating the common strong-table path. Branch misses were effectively unchanged.
 
-In standard Lua and Luau implementations, all strings are immutable, heap-allocated, and globally interned objects. While interning makes string equality checks instant, creating short temporary strings—such as dictionary keys, UUID substrings, or formatted tokens—incurs massive penalties. The VM must allocate a 24-byte string header, hash the byte sequence, acquire locks to insert it into the global string hash table, and register the object with the garbage collector for lifetime tracking.
+The added continuation check also runs on table writes, so it needed its own regression test. Two paired median runs of 65,536-key hash insert, update, lookup, and removal phases overlapped in both directions: some candidate phases were faster, others slower. Hardware counts were likewise within run-to-run variation. The correct conclusion is **no consistent measurable regression**, not that every table operation became faster.
 
-Jaci eliminates this overhead by introducing **Small String Optimization (SSO)**. Any string up to 15 bytes in length is stored directly inside the 16-byte value struct payload, utilizing an inline byte array and a 1-byte length tag. SSO strings completely bypass heap allocation, string table interning, and garbage collection sweeping. Because their lifetime is tied intrinsically to the stack slot or the table container they reside in, memory allocation churn for short string manipulations drops to zero.
+![Maximum GC step latency for Luau 0.735 and Jaci across seven independent processes](../../assets/images/jaci-gc-step-latency-benchmark.png)
 
-For longer interned strings, short hash calculations use direct register shift-and-mask lookups rather than multi-instruction hash loops. Builtin functions such as string formatting and byte extraction are lowered directly into specialized SSA MIR opcodes. Operations like clearing or cloning tables utilize 256-bit AVX2 SIMD zeroing and block copying instructions instead of element-by-element iteration.
+![Measured table and full-collection time for the Luau release and Jaci](../../assets/images/jaci-table-gc-throughput-benchmark.png)
 
-![String & Builtin Execution Time Comparison](../../assets/images/jaci-string-bench.png)
+### How to read these numbers
 
-## Zero-Cost Native FFI and Systems Interoperability
+- “Maximum” is sensitive to scheduler noise. This is why the final strong-table result is reported as a range across runs and accompanied by p99.
+- Full-collection medians measure throughput-oriented work; per-step probes measure latency. They answer different questions.
+- These are microbenchmarks designed to isolate a mechanism. They do not replace application traces.
+- The comparison preserves the same Luau program and collector semantics. Results from C++ functions that merely simulate “generic” and “specialized” tables are not included as VM speedups.
 
-General-purpose applications operating outside sandbox boundaries fundamentally require direct, zero-friction interoperation with operating system APIs, C/C++ native libraries, GPU runtimes, and raw binary buffers. Traditional Lua embedding requires developers to manually write C++ wrapper functions, push arguments onto the virtual stack one by one, and perform type checking on every single invocation.
+## The honest limit: live weak tables still have an atomic tail
 
-Jaci implements a true **Zero-Cost Foreign Function Interface (FFI)** directly within the Virtual Machine. The process begins with an in-VM C Declaration Parser that evaluates C function prototypes and struct definitions directly from string literals at compile time. It automatically computes natural struct alignment, padding, and byte offsets, supporting extended sized primitives like 64-bit integers and 32-bit floats.
+The collector is not universally sub-millisecond.
 
-```mermaid
-flowchart TD
-    subgraph CDef["1. C Declaration Parser"]
-        A["ffi.cdef[[ double cos(double); ]]"] --> B["In-VM AST Type Parser"]
-        B --> C["Struct Layout & Sized Primitives"]
-    end
-    subgraph Trampoline["2. Register Trampoline"]
-        C --> D["Direct System V / AAPCS64 Mapping"]
-        D --> E["GPRs: rdi, rsi, rdx / x0..x7"]
-        D --> F["SIMD: xmm0..xmm7 / q0..q7"]
-        E & F --> G["Direct 'call' (No Wrapper)"]
-    end
-    subgraph Security["3. Security Boundaries"]
-        G --> H["Guard Page Validation"]
-        H --> I["Modes: permissive | strict | disabled"]
-    end
-```
+A 524,288-entry weak-value table whose values are all kept alive by a separate strong root still requires atomic closure and weak-table processing. Across four final runs, that indivisible transition measured **10.992–16.047 ms**.
 
-The true power of this FFI lies in its **Direct Register-Mapped Calling Trampoline**. When Jaci compiles a call to a native C function, it maps the integer and pointer arguments directly to the hardware CPU registers dictated by the platform's Application Binary Interface. Floating-point values map directly to SIMD registers. The native call emits a direct machine-level jump instruction. There are no intermediate interpreter stack frames, no C++ trampoline wrappers, and zero argument parsing overhead. 
+Why not yield halfway through it? Luau's current atomic phase assumes the mutator cannot run between closure, weak decisions, and clearing. Safely making that work resumable would require at least:
 
-The FFI subsystem also provides raw memory operations and sized buffer views, allowing developers to allocate memory buffers and perform direct reads and writes with hardware alignment. Configurable runtime security boundaries ensure that invalid pointers and null dereferences are caught safely as standard runtime errors, guaranteeing robust execution even when interacting with unsafe systems libraries.
+- allocation coloring rules for objects created while atomic work is suspended;
+- dirty weak-table tracking for mutations between slices;
+- resumable ephemeron/weak convergence and clearing state;
+- barriers and invariants that cover the new interleavings.
 
-![Memory Footprint and Cache Reuse](../../assets/images/jaci-memory-footprint.png)
+Adding a cursor without those mechanisms could collect a reachable object or retain an object that should be cleared. Jaci therefore leaves this phase indivisible and reports it as the current architectural boundary. The strong-table result is genuinely sub-millisecond in the measured probe; the whole collector is not yet guaranteed to be.
 
-## Empirical Benchmark Deep-Dive
+## Where LLVM actually fits today
 
-To empirically validate these architectural decisions, we evaluated both upstream Luau and Jaci across a suite of real-world microbenchmarks, LLVM specialization tests, and synthetic workloads. These tests were executed on identical hardware (Intel Core i5-1235U, 12th Gen x86_64 Linux). The data demonstrates that Jaci's architectural transformations yield unprecedented performance gains without compromising safety.
+Jaci has a real LLVM backend, but its current architecture is more conservative than the former article described.
 
-**Shape Guarded Field Access** represents one of the most drastic improvements. In upstream Luau, accessing a table field requires hashing the key and probing the dictionary, taking roughly 0.0910 milliseconds per operation batch. By replacing this hash probe with a guarded single-cycle L1 slot load, Jaci executes the same workload in just 0.00016 milliseconds. This represents an astonishing 570.52× speedup factor, eliminating 99.82% of the execution latency. 
+The active path is:
 
-**Virtual Table Scalar Replacement (SROA)** proved equally transformative. When temporary table allocations are proven not to escape their local scope, Jaci avoids heap allocation entirely and promotes the object's properties directly to CPU registers. The upstream baseline for this operation was 0.0620 milliseconds. Jaci completed it in 0.00024 milliseconds, delivering a 257.10× speedup by avoiding heap memory traffic entirely.
+`Luau bytecode → existing Luau IR → constant/dead-store optimization → LLVM lowering → LLVM O2 → ELF relocatable object → Jaci object loader → code allocator`.
 
-**Metatable Static Bypass** optimizations allow Jaci to completely skip expensive metamethod absence checks when the compiler proves that the requested properties already exist statically. This reduces execution time from 0.1000 milliseconds down to 0.00110 milliseconds, a 90.55× speedup. Similarly, **Table Literal Pre-Sizing** pre-allocates hash node arrays to their exact required size during table creation. This prevents the VM from doing expensive resizing and rehashing passes later on, shrinking initialization time from 2.3760 milliseconds to 0.0520 milliseconds (a 45.75× speedup).
+Each compiled proto uses a standard C-compatible function contract. Unsupported or unsafe-to-lower instructions write the correct resume position to `savedpc`, return to the VM, and continue in the interpreter. This fallback-first protocol keeps the interpreter as the semantic reference while LLVM coverage grows.
 
-**Static Table Constant Promotion** allows immutable constant tables to be folded completely into read-only static data, resulting in a 16.95× speedup. For heavy computational workloads, **Typed Numeric Array Vector Sums** benefit immensely from LLVM. By unboxing contiguous arrays and emitting 256-bit AVX2 vector accumulators, Jaci achieved a 5.96× speedup over the upstream baseline. The **Mandelbrot SIMD Kernel** test showed similar gains, vectorizing complex arithmetic across 4 parallel lanes to achieve a 4.01× execution speedup. Even dynamic, unspecialized dictionary accesses benefit: the **Polymorphic Inline Cache (PIC) Dispatch** utilizes 2-way branch prediction to eliminate generic hash resolution overhead, resulting in a 2.10× speedup.
+The hand-written x64/AArch64 backend remains available. A build without LLVM uses it, and the current same-program benchmark does not show LLVM winning yet. In seven runs of the numeric-loop backend comparison, the independent medians were **1.193 ms for the assembly backend** and **2.460 ms for LLVM**. The test itself explains why: current LLVM entries still resume in the VM for parts of the workload. Correctness and coverage are ahead of peak performance.
 
-### Real-World Workload Profiles
+![Seven same-program timing runs comparing the assembly and LLVM backends](../../assets/images/jaci-llvm-backend-benchmark.png)
 
-Beyond isolated microbenchmarks, we tested full execution suites to measure wall-clock time improvements in real-world scenarios. The `table.freeze` operation across 50,000 tables saw execution time drop from 3.0693 milliseconds in vanilla Luau down to 2.0519 milliseconds in Jaci, making it 1.50× faster. Standard hash lookups over 50,000 hits executed 1.20× faster (18.3677 milliseconds compared to upstream's 22.0410 milliseconds).
+This is a healthier description than saying LLVM has replaced all assembly or automatically makes every workload faster. LLVM provides a real optimization and target-emission pipeline; Jaci still has to lower enough VM semantics efficiently to benefit from it.
 
-Math-heavy workloads involving sine, cosine, square root, and arc-tangent computations (over 200,000 operations) executed 1.20× faster due to Jaci's superior register allocation and inlined floating-point ops. String formatting operations saw a 1.13× speedup, executing in 9.0042 milliseconds compared to the 10.1309 millisecond upstream baseline. Table cloning and finding operations achieved near 9% execution time improvements across the board. 
+## FFI: less wrapper code, not magic or automatic memory safety
 
-### Garbage Collection Efficiency Improvements
+Jaci's `ffi` module is implemented and tested. It supports dynamic library loading, symbol lookup, a C-declaration parser, sized primitive types, struct layout, typed buffer reads and writes, and native calls. Security modes and library allow/deny policies can reduce exposure.
 
-The redesigned garbage collection subsystem proved its worth under heavy allocation churn. When allocating 50,000 high-churn objects, upstream Luau's vanilla GC suffered a mean mutator pause latency of 148.83 microseconds. Jaci's low-latency collector reduced this to 121.36 microseconds—an 18.5% reduction in pause time. Furthermore, the maximum worst-case tail pause dropped from 602.23 microseconds to 577.53 microseconds.
+That does not make arbitrary native access memory-safe, nor does it prove “zero overhead.” Argument classification, validation, symbol dispatch, and the platform calling convention still have costs. In permissive mode, raw pointers remain raw pointers. Strict-mode low-address checks can reject null or guard-page-like pointers, but they do not prove ownership, lifetime, bounds, or thread safety.
 
-Because of the Zero-Syscall page pools, allocation throughput increased massively. Jaci processed 8.24 million allocations per second, a 22.6% throughput advantage over upstream's 6.72 million allocations per second. While the upstream engine relied exclusively on the operating system's `malloc` and `free` for memory management (resulting in 100% kernel syscall overhead), Jaci achieved an incredible 99.4% hot page recycling rate. This nearly eliminated operating system memory churn, keeping execution strictly within user-space.
+The accurate value proposition is practical: Jaci removes much of the custom C-wrapper boilerplate and gives standalone programs a direct systems boundary. Applications still own the safety contract of the native libraries they call.
 
-## Summary
+## How correctness was tested
 
-Achieving near-zero overhead in dynamic programming languages does not require sacrificing developer ergonomics, memory safety, or backward compatibility. By engineering a multi-tier SSA compilation pipeline backed by LLVM, Jaci analyzes code deeply enough to apply Table Shape Specialization and Scalar Replacement of Aggregates. By rethinking VM architecture, Jaci implements out-of-line interrupt handling to preserve CPU registers and designs a zero-syscall hot page pool to eliminate garbage collection kernel stalls.
+The final GC/table change passed:
 
-Jaci proves that a high-level, dynamically typed language can execute with systems-grade C-level efficiency. It delivers deterministic, low-latency performance across general-purpose domains, all while guaranteeing that every single valid Luau program will continue to run flawlessly without modification.
+- **5,152/5,152** unit tests with **21,277** assertions;
+- **332/332** Luau conformance tests with **6,450** assertions;
+- the 10-test GC suite in normal, AddressSanitizer, and no-LLVM builds;
+- 100 randomized normal GC-suite repetitions;
+- 25 randomized AddressSanitizer GC-suite repetitions.
+
+Dedicated cases cover active-scan mutation, array growth and hash reallocation, metatable replacement, weak-mode changes, a forced full collection during a partial scan, and mixed graphs containing tables, buffers, vectors, closures, suspended coroutines, and captured upvalues. Internal validation also runs while a continuation is paused, not only after the collection completes.
+
+Passing tests cannot prove compatibility with every possible Luau program. They do show that the retained optimization survived the known semantic boundaries, the full repository suite, sanitizer instrumentation, a backend-isolation build, and repeated randomized execution.
+
+## Conclusion
+
+The important result is not that Jaci made garbage collection “free.” It did not. The result is that a specific, previously unbounded strong-table operation now obeys the incremental work budget while preserving Luau semantics, and the remaining non-sub-millisecond case is identified precisely.
+
+The engineering method is reusable:
+
+1. measure the phase that owns the tail;
+2. preserve a behavioral reference;
+3. reject optimizations that only win synthetic cases or move cost into memory;
+4. add state only where the invariant can be explained;
+5. test mutations and uncommon semantics, not only steady-state throughput;
+6. publish the limit together with the win.
+
+That is what “near-zero cost” should mean in Jaci: not a promise that cost disappeared, but a continuing effort to make common costs small, bounded, measurable, and honest.
