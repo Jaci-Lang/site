@@ -119,6 +119,10 @@ The added continuation check also runs on table writes, so it needed its own reg
 
 ![Measured table and full-collection time for the Luau release and Jaci](../../assets/images/jaci-table-gc-throughput-benchmark.png)
 
+The focused GC results must not be presented as if every program became dramatically faster. A broader Release-mode comparison ran 22 existing workloads with 20 retained timings per VM. Jaci won 12 workloads and lost 10. The largest measured win was **10.9%** in `mesh-normal-scalar`; the largest loss was **9.7%** in `vector-math`. Across the complete set, the geometric-mean change was **0.20% slower**, which is effectively parity at this measurement scale. The optimization is valuable because it removes the strong-table latency cliff while preserving general VM throughput, not because it makes every benchmark faster.
+
+![Measured Jaci speedup or slowdown against Luau 0.735 across 22 VM workloads](../../assets/images/jaci-luau-suite-gains.png)
+
 ### How to read these numbers
 
 - “Maximum” is sensitive to scheduler noise. This is why the final strong-table result is reported as a range across runs and accompanied by p99.
